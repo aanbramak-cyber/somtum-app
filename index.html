@@ -146,6 +146,70 @@ throw new Error(j.error || 'Gagal');
 return j.data;
 }
 
+/* ===================== order bahan (ke sheet Stock) ===================== */
+const STOCK_API = 'https://script.google.com/macros/s/AKfycbwlqav7YAXTuWmgFTzfOsHaXF5oaeDwlwgDq2eLNAa6z0C367YsdxgyOw_W8vdOHQ1m/exec';
+const ORDER_KEY = 'somtum-order-2026';
+async function apiStock(action, payload) {
+  const body = Object.assign({ key: ORDER_KEY, action: action }, payload || {});
+  let r;
+  try { r = await fetch(STOCK_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow' }); }
+  catch (e) { throw new Error(navigator.onLine ? 'Tidak bisa terhubung ke server stok.' : 'Tidak ada koneksi internet.'); }
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'Gagal');
+  return j.data;
+}
+const OM = { master: [], cart: [], q: '', cat: '' };
+async function renderOrder() {
+  page('Order bahan / barang', '<div class="muted center mt">Memuat daftar master…</div>');
+  if (!OM.master.length) {
+    try { OM.master = await apiStock('order_master'); }
+    catch (e) { return page('Order bahan / barang', `<div class="card"><div class="muted">${h(e.message)}</div><button class="btn mt" onclick="renderOrder()">Coba lagi</button></div>`); }
+  }
+  drawOrder();
+}
+function omListHtml() {
+  const q = OM.q.trim().toLowerCase();
+  const arr = q ? OM.master.filter(m => m.barang.toLowerCase().indexOf(q) >= 0 || (m.supplier || '').toLowerCase().indexOf(q) >= 0) : OM.master;
+  const list = arr.slice(0, 40);
+  return list.map(m => { const i = OM.master.indexOf(m); const inCart = OM.cart.some(c => c._i === i);
+    return `<div class="cb" onclick="omPick(${i})"><div class="grow"><b>${h(m.barang)}</b> <span class="muted">${h(m.satuan)}</span><div class="muted" style="font-size:12px">${m.bagian === 'FOH' ? 'FOH' : 'Kitchen'} · ${h(m.supplier || '-')}</div></div><div class="btn sm ${inCart ? 'ok' : ''}" style="pointer-events:none">${inCart ? '✓' : '＋'}</div></div>`;
+  }).join('') + (arr.length > 40 ? `<div class="muted center mt">…${arr.length - 40} item lagi, ketik lebih spesifik</div>` : (arr.length ? '' : '<div class="muted center">Tidak ada yang cocok</div>'));
+}
+function drawOrder() {
+  let body = `<div class="card"><input type="text" id="omQ" placeholder="Cari bahan / barang (${OM.master.length} item)…" value="${h(OM.q)}" autocomplete="off"><div id="omList" style="margin-top:8px">${omListHtml()}</div></div>`;
+  body += `<h3 style="margin:14px 0 8px;font-size:14px;color:var(--mut)">Keranjang order (${OM.cart.length})</h3>`;
+  if (!OM.cart.length) body += '<div class="muted mb">Belum ada. Tap item + untuk menambah ke order.</div>';
+  else {
+    body += OM.cart.map((c, i) => `<div class="rowcard"><div class="rh"><span>${h(c.barang)} <span class="muted">(${c.bagian === 'FOH' ? 'FOH' : 'Kitchen'})</span></span><button class="btn sm ghost" onclick="omDel(${i})">Hapus</button></div>
+      <div class="row mt"><input type="text" inputmode="decimal" style="flex:1" value="${h(c.jumlah)}" oninput="OM.cart[${i}].jumlah=this.value" placeholder="Jumlah"><div class="muted" style="min-width:64px;text-align:right">${h(c.satuan || '')}</div></div>
+      <div class="muted" style="font-size:12px;margin-top:5px">Supplier: ${h(c.supplier || '-')}</div></div>`).join('');
+    body += `<label class="f">Catatan (opsional)</label><input type="text" id="omCat" value="${h(OM.cat || '')}" oninput="OM.cat=this.value" placeholder="mis. untuk stok akhir pekan">`;
+    body += `<button class="btn primary mt" onclick="omKirim()">Kirim ${OM.cart.length} order ke belanja</button>`;
+  }
+  page('Order bahan / barang', body);
+  const inp = $('omQ');
+  if (inp) { inp.addEventListener('input', e => { OM.q = e.target.value; const el = $('omList'); if (el) el.innerHTML = omListHtml(); }); }
+}
+function omPick(i) {
+  const m = OM.master[i]; if (!m) return;
+  if (OM.cart.some(c => c._i === i)) { toast(m.barang + ' sudah di keranjang'); return; }
+  OM.cart.push({ _i: i, bagian: m.bagian, barang: m.barang, supplier: m.supplier, satuan: m.satuan, jumlah: '' });
+  drawOrder();
+}
+function omDel(i) { OM.cart.splice(i, 1); drawOrder(); }
+async function omKirim() {
+  if (!OM.cart.length) return;
+  const items = OM.cart.map(c => ({ bagian: c.bagian, barang: c.barang, supplier: c.supplier, satuan: c.satuan, jumlah: String(c.jumlah || '').trim() }));
+  loading(true, 'Mengirim order…');
+  try {
+    const r = await apiStock('order_add', { items: items, oleh: S.staff.panggilan || S.staff.nama, catatan: OM.cat || '' });
+    loading(false);
+    OM.cart = []; OM.cat = ''; OM.q = '';
+    await ask('Order terkirim', `<div class="center big">${(r && r.terkirim) || items.length}</div><div class="muted center">item masuk ke Daftar Belanja & Teks WA.<br>Setelah dibeli, centang "Dibeli" di sheet biar hilang.</div>`);
+    renderHome();
+  } catch (e) { loading(false); toast(e.message, 4000); }
+}
+
 /* ===================== foto ===================== */
 function ambilFoto(facing) {
 return new Promise(res => {
@@ -242,6 +306,7 @@ let mgr = '';
 if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderAbsensiHariIni)"><div class="ic">👥</div><div class="lb">Absensi hari ini</div><div class="sb">Siapa sudah masuk</div></div>`;
 if (roleAtLeast('manager')) mgr += `<div class="tile" onclick="show(renderRekap)"><div class="ic">📊</div><div class="lb">Rekap absensi</div><div class="sb">Per bulan, untuk gaji</div></div>`;
 if (roleAtLeast('manager') && cfg.links && cfg.links.daftarBelanja) mgr += `<div class="tile" onclick="window.open('${h(cfg.links.daftarBelanja)}','_blank')"><div class="ic">🛒</div><div class="lb">Daftar belanja</div><div class="sb">Kitchen + FOH, kirim WA</div></div>`;
+if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderOrder)"><div class="ic">🧺</div><div class="lb">Order bahan / barang</div><div class="sb">Pilih dari master → belanja</div></div>`;
 if (roleAtLeast('owner')) mgr += `<div class="tile" onclick="window.open('https://script.google.com/macros/s/AKfycbzRKyu1RJT7Kozi-_vNm4gcpbLkqBqYOS7LdPduMBz33Ry0UXhqP-Pn1_Aeg_Zc0yGIrQ/exec','_blank')"><div class="ic">📈</div><div class="lb">Laporan keuangan</div><div class="sb">Omzet · belanja · stok · hutang</div></div>`;
 const ios = /iphone|ipad/i.test(navigator.userAgent) && !window.navigator.standalone && !matchMedia('(display-mode: standalone)').matches;
 page('Somtum App', `${ios ? '<div class="banner">Supaya jadi icon di HP: tap tombol Bagikan (kotak panah) di Safari → <b>Tambah ke Layar Utama</b>.</div>' : ''}
