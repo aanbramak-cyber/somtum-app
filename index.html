@@ -150,7 +150,7 @@ return j.data;
 const STOCK_API = 'https://script.google.com/macros/s/AKfycbwlqav7YAXTuWmgFTzfOsHaXF5oaeDwlwgDq2eLNAa6z0C367YsdxgyOw_W8vdOHQ1m/exec';
 const ORDER_KEY = 'somtum-order-2026';
 async function apiStock(action, payload) {
-  const body = Object.assign({ key: ORDER_KEY, action: action }, payload || {});
+  const body = Object.assign({ key: ORDER_KEY, action: action, staffId: (S.staff && S.staff.id) || '', token: S.token || '' }, payload || {});
   let r;
   try { r = await fetch(STOCK_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow' }); }
   catch (e) { throw new Error(navigator.onLine ? 'Tidak bisa terhubung ke server stok.' : 'Tidak ada koneksi internet.'); }
