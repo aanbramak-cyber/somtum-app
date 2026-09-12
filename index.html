@@ -159,6 +159,65 @@ async function apiStock(action, payload) {
   return j.data;
 }
 const OM = { master: [], cart: [], q: '', cat: '' };
+/* ===================== barang masuk (goods received) ===================== */
+const BM = { master: [], q: '', cart: [], catatan: '' }; // BM = Barang Masuk
+
+async function renderBarangMasuk() {
+  page('Barang Masuk', '<div class="muted center mt">Memuat daftar master…</div>');
+  if (!BM.master.length) {
+    try { BM.master = await apiStock('order_master'); }
+    catch (e) { return page('Barang Masuk', `<div class="card"><div class="muted">${h(e.message)}</div><button class="btn mt" onclick="renderBarangMasuk()">Coba lagi</button></div>`); }
+  }
+  drawBarangMasuk();
+}
+
+function bmListHtml() {
+  const q = BM.q.trim().toLowerCase();
+  const arr = q ? BM.master.filter(m => m.barang.toLowerCase().indexOf(q) >= 0) : BM.master;
+  const list = arr.slice(0, 40);
+  return list.map(m => { const i = BM.master.indexOf(m); const inCart = BM.cart.some(c => c._i === i);
+    return `<div class="cb" onclick="bmPick(${i})"><div class="grow"><b>${h(m.barang)}</b> <span class="muted">${h(m.satuan)}</span><div class="muted" style="font-size:12px">${m.bagian === 'FOH' ? 'FOH' : 'Kitchen'}</div></div><div class="btn sm ${inCart ? 'ok' : ''}" style="pointer-events:none">${inCart ? '✓' : '+'}</div></div>`;
+  }).join('') + (arr.length > 40 ? `<div class="muted center mt">…${arr.length - 40} item lagi, ketik lebih spesifik</div>` : (arr.length ? '' : '<div class="muted center">Tidak ada yang cocok</div>'));
+}
+
+function drawBarangMasuk() {
+  let body = `<div class="card"><input type="text" id="bmQ" placeholder="Cari barang (${BM.master.length} item)…" value="${h(BM.q)}" autocomplete="off"><div id="bmList" style="margin-top:8px">${bmListHtml()}</div></div>`;
+  body += `<h3 style="margin:14px 0 8px;font-size:14px;color:var(--mut)">Barang Diterima (${BM.cart.length})</h3>`;
+  if (!BM.cart.length) body += '<div class="muted mb">Belum ada. Tap item + untuk menambah.</div>';
+  else {
+    body += BM.cart.map((c, i) => `<div class="rowcard"><div class="rh"><span>${h(c.barang)} <span class="muted">(${c.bagian === 'FOH' ? 'FOH' : 'Kitchen'})</span></span><button class="btn sm ghost" onclick="bmDel(${i})">Hapus</button></div>
+      <div class="row mt"><input type="text" inputmode="decimal" style="flex:1" value="${h(c.jumlah)}" oninput="BM.cart[${i}].jumlah=this.value" placeholder="Jumlah"><div class="muted" style="min-width:64px;text-align:right">${h(c.satuan || '')}</div></div>
+      <div class="row mt" style="font-size:13px"><input type="text" style="flex:1" value="${h(c.supplier || '')}" oninput="BM.cart[${i}].supplier=this.value" placeholder="Supplier (opsional)"></div></div>`).join('');
+    body += `<label class="f">Catatan (opsional)</label><input type="text" id="bmCat" placeholder="mis. kondisi barang" value="${h(BM.catatan || '')}" oninput="BM.catatan=this.value">`;
+    body += `<button class="btn primary mt" onclick="bmKirim()">Catat ${BM.cart.length} barang masuk</button>`;
+  }
+  page('Barang Masuk', body);
+  const inp = $('bmQ');
+  if (inp) { inp.addEventListener('input', e => { BM.q = e.target.value; const el = $('bmList'); if (el) el.innerHTML = bmListHtml(); }); }
+}
+
+function bmPick(i) {
+  const m = BM.master[i]; if (!m) return;
+  if (BM.cart.some(c => c._i === i)) { toast(m.barang + ' sudah di list'); return; }
+  BM.cart.push({ _i: i, bagian: m.bagian, barang: m.barang, supplier: '', satuan: m.satuan, jumlah: '' });
+  drawBarangMasuk();
+}
+
+function bmDel(i) { BM.cart.splice(i, 1); drawBarangMasuk(); }
+
+async function bmKirim() {
+  if (!BM.cart.length) return;
+  const items = BM.cart.map(c => ({ bagian: c.bagian, barang: c.barang, supplier: c.supplier || '', satuan: c.satuan, jumlah: String(c.jumlah || '').trim() }));
+  loading(true, 'Catat barang masuk…');
+  try {
+    const r = await apiStock('barang_masuk_add', { items: items, oleh: S.staff.panggilan || S.staff.nama, catatan: BM.catatan || '' });
+    loading(false);
+    BM.cart = []; BM.catatan = ''; BM.q = '';
+    await ask('Barang Masuk Tercatat', `<div class="center big">${(r && r.terima) || items.length}</div><div class="muted center">item dicatat di log.<br>Stok siap di-update manual atau otomatis.</div>`);
+    renderHome();
+  } catch (e) { loading(false); toast(e.message, 4000); }
+}
+
 async function renderOrder() {
   page('Order bahan / barang', '<div class="muted center mt">Memuat daftar master…</div>');
   if (!OM.master.length) {
@@ -307,6 +366,7 @@ if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderAbsensi
 if (roleAtLeast('manager')) mgr += `<div class="tile" onclick="show(renderRekap)"><div class="ic">📊</div><div class="lb">Rekap absensi</div><div class="sb">Per bulan, untuk gaji</div></div>`;
 if (roleAtLeast('manager') && cfg.links && cfg.links.daftarBelanja) mgr += `<div class="tile" onclick="window.open('${h(cfg.links.daftarBelanja)}','_blank')"><div class="ic">🛒</div><div class="lb">Daftar belanja</div><div class="sb">Kitchen + FOH, kirim WA</div></div>`;
 if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderOrder)"><div class="ic">🧺</div><div class="lb">Order bahan / barang</div><div class="sb">Pilih dari master → belanja</div></div>`;
+if (true) mgr += `<div class="tile" onclick="show(renderBarangMasuk)"><div class="ic">📦</div><div class="lb">Barang Masuk</div><div class="sb">Catat barang diterima</div></div>`;
 if (roleAtLeast('owner')) mgr += `<div class="tile" onclick="window.open('https://script.google.com/macros/s/AKfycbzRKyu1RJT7Kozi-_vNm4gcpbLkqBqYOS7LdPduMBz33Ry0UXhqP-Pn1_Aeg_Zc0yGIrQ/exec','_blank')"><div class="ic">📈</div><div class="lb">Laporan keuangan</div><div class="sb">Omzet · belanja · stok · hutang</div></div>`;
 const ios = /iphone|ipad/i.test(navigator.userAgent) && !window.navigator.standalone && !matchMedia('(display-mode: standalone)').matches;
 page('Somtum App', `${ios ? '<div class="banner">Supaya jadi icon di HP: tap tombol Bagikan (kotak panah) di Safari → <b>Tambah ke Layar Utama</b>.</div>' : ''}
