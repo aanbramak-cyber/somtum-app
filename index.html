@@ -367,7 +367,7 @@ if (roleAtLeast('manager')) mgr += `<div class="tile" onclick="show(renderRekap)
 if (roleAtLeast('manager') && cfg.links && cfg.links.daftarBelanja) mgr += `<div class="tile" onclick="window.open('${h(cfg.links.daftarBelanja)}','_blank')"><div class="ic">🛒</div><div class="lb">Daftar belanja</div><div class="sb">Kitchen + FOH, kirim WA</div></div>`;
 if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderOrder)"><div class="ic">🧺</div><div class="lb">Order bahan / barang</div><div class="sb">Pilih dari master → belanja</div></div>`;
 if (true) mgr += `<div class="tile" onclick="show(renderBarangMasuk)"><div class="ic">📦</div><div class="lb">Barang Masuk</div><div class="sb">Catat barang diterima</div></div>`;
-if (roleAtLeast('owner')) mgr += `<div class="tile" onclick="window.open('https://script.google.com/macros/s/AKfycbzRKyu1RJT7Kozi-_vNm4gcpbLkqBqYOS7LdPduMBz33Ry0UXhqP-Pn1_Aeg_Zc0yGIrQ/exec','_blank')"><div class="ic">📈</div><div class="lb">Laporan keuangan</div><div class="sb">Omzet · belanja · stok · hutang</div></div>`;
+if (roleAtLeast('manager')) mgr += `<div class="tile" onclick="window.open('https://script.google.com/macros/s/AKfycbzRKyu1RJT7Kozi-_vNm4gcpbLkqBqYOS7LdPduMBz33Ry0UXhqP-Pn1_Aeg_Zc0yGIrQ/exec','_blank')"><div class="ic">📈</div><div class="lb">Laporan keuangan</div><div class="sb">Omzet · belanja · stok · hutang</div></div>`;
 const ios = /iphone|ipad/i.test(navigator.userAgent) && !window.navigator.standalone && !matchMedia('(display-mode: standalone)').matches;
 page('Somtum App', `${ios ? '<div class="banner">Supaya jadi icon di HP: tap tombol Bagikan (kotak panah) di Safari → <b>Tambah ke Layar Utama</b>.</div>' : ''}
 <div class="card" id="absenCard"><div class="muted">Memuat absensi…</div></div>
