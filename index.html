@@ -218,6 +218,137 @@ async function bmKirim() {
   } catch (e) { loading(false); toast(e.message, 4000); }
 }
 
+/* ===================== Cek Stock (tampilan) + Laporan Stok — Inventory API ===================== */
+const INVENTORY_API = window.INVENTORY_API || '';
+async function apiInv(action, payload) {
+  if (!/^https?:/.test(INVENTORY_API)) throw new Error('Backend Cek Stock belum disetel (isi INVENTORY_API di config.js).');
+  const body = Object.assign({ action: action, staffId: (S.staff && S.staff.id) || '', token: S.token || '' }, payload || {});
+  let r;
+  try { r = await fetch(INVENTORY_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow' }); }
+  catch (e) { throw new Error(navigator.onLine ? 'Tidak bisa terhubung ke server stok.' : 'Tidak ada koneksi internet.'); }
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'Gagal');
+  return j.data;
+}
+const INV = { bagian: 'all', mode: 'stok', data: null };
+function invBadge(status) {
+  const map = { 'Aman': 'var(--ok)', 'Menipis': 'var(--warn)', 'Habis': 'var(--bad)' };
+  const bg = map[status] || '#9aa0a6';
+  return `<span class="badge" style="background:${bg};color:#fff">${h(status)}</span>`;
+}
+function invBagianChips() {
+  const opt = [['all', 'Semua'], ['FOH', 'FOH'], ['KITCHEN', 'Kitchen']];
+  return `<div class="chips mb">` + opt.map(o => `<button class="chipb ${INV.bagian === o[0] ? 'on' : ''}" onclick="invSetBagian('${o[0]}')">${o[1]}</button>`).join('') + `</div>`;
+}
+function invModeChips() {
+  return `<div class="chips mb"><button class="chipb ${INV.mode === 'stok' ? 'on' : ''}" onclick="invSetMode('stok')">Stok tersedia</button><button class="chipb ${INV.mode === 'riwayat' ? 'on' : ''}" onclick="invSetMode('riwayat')">Riwayat masuk</button></div>`;
+}
+function invSetBagian(b) { INV.bagian = b; invLoad(); }
+function invSetMode(m) { INV.mode = m; invLoad(); }
+async function renderInventory() { INV.data = null; await invLoad(); }
+async function invLoad() {
+  page('Cek Stock', invBagianChips() + invModeChips() + '<div class="muted center mt">Memuat…</div>');
+  try {
+    INV.data = INV.mode === 'riwayat'
+      ? await apiInv('riwayat_masuk', { bagian: INV.bagian, limit: 150 })
+      : await apiInv('inventory', { bagian: INV.bagian });
+    drawInventory();
+  } catch (e) {
+    page('Cek Stock', invBagianChips() + invModeChips() + `<div class="card"><div class="muted">${h(e.message)}</div><button class="btn mt" onclick="invLoad()">Coba lagi</button></div>`);
+  }
+}
+function drawInventory() {
+  let body = invBagianChips() + invModeChips();
+  const d = INV.data || {};
+  if (INV.mode === 'riwayat') {
+    const rows = d.rows || [];
+    body += `<div class="muted mb">${rows.length} catatan masuk terbaru</div>`;
+    body += rows.length ? rows.map(r => `<div class="rowcard"><div class="rh"><span><b>${h(r.nama)}</b> <span class="muted">(${r.bagian === 'FOH' ? 'FOH' : 'Kitchen'})</span></span><span>${h(r.jumlah)}</span></div><div class="muted" style="font-size:12px">${h(r.tgl)}${r.supplier ? ' · ' + h(r.supplier) : ''}${r.oleh ? ' · ' + h(r.oleh) : ''}${r.ket ? ' · ' + h(r.ket) : ''}</div></div>`).join('') : '<div class="muted">Belum ada catatan barang masuk.</div>';
+  } else {
+    const items = d.items || [];
+    body += `<div class="muted mb">${items.length} barang${d.bagian && d.bagian !== 'all' ? ' · ' + (d.bagian === 'FOH' ? 'FOH' : 'Kitchen') : ''}</div>`;
+    body += items.length ? items.map(it => `<div class="card" style="padding:11px 12px;margin-bottom:8px"><div class="row"><div class="grow"><b>${h(it.nama)}</b> <span class="muted" style="font-size:12px">${it.bagian === 'FOH' ? 'FOH' : 'Kitchen'}</span></div>${invBadge(it.status)}</div><div class="muted" style="font-size:13px;margin-top:4px">Masuk: <b>${h(it.masuk)}</b> ${h(it.satuan)}${it.sisa !== null && it.sisa !== undefined ? ' · Sisa: <b>' + h(it.sisa) + '</b>' : ''}${it.stokMin !== null && it.stokMin !== undefined ? ' · Min: ' + h(it.stokMin) : ''}</div>${it.tglMasuk ? `<div class="muted" style="font-size:12px">Masuk terakhir: ${h(it.tglMasuk)}${it.supplier ? ' · ' + h(it.supplier) : ''}</div>` : ''}${it.ket ? `<div class="muted" style="font-size:12px">${h(it.ket)}</div>` : ''}</div>`).join('') : '<div class="muted">Belum ada data. Catat lewat menu "Barang Masuk".</div>';
+  }
+  page('Cek Stock', body);
+}
+async function renderLaporanStok() {
+  page('Laporan Stok', '<div class="muted center mt">Menghitung…</div>');
+  try {
+    const d = await apiInv('laporan_stok', { bagian: 'all' });
+    let body = '';
+    if (!d.ready) {
+      body = `<div class="banner">${h(d.pesan || 'Belum ada input pemakaian.')}</div><div class="card"><div class="muted">Barang terpantau: <b>${h(d.totalBarang)}</b>.</div><div class="muted mt">Laporan menipis/habis muncul otomatis setelah opname (sisa fisik) diisi. Sampai itu, sistem tidak menandai barang sebagai menipis.</div></div>`;
+    } else {
+      body += invSec('🔴 Stok Habis', d.habis);
+      body += invSec('🟡 Stok Menipis', d.menipis);
+      if (!(d.habis || []).length && !(d.menipis || []).length) body += '<div class="card"><div class="muted">Semua stok aman 👍</div></div>';
+      if (roleAtLeast('kepala') && (d.perluDipesan || []).length) body += `<button class="btn primary mt" onclick="show(renderOrder)">Teruskan ke Order bahan / barang</button>`;
+    }
+    page('Laporan Stok', body);
+  } catch (e) {
+    page('Laporan Stok', `<div class="card"><div class="muted">${h(e.message)}</div><button class="btn mt" onclick="renderLaporanStok()">Coba lagi</button></div>`);
+  }
+}
+function invSec(title, arr) {
+  arr = arr || [];
+  if (!arr.length) return '';
+  return `<h3 style="margin:14px 0 8px;font-size:14px;color:var(--mut)">${title} (${arr.length})</h3>` + arr.map(it => `<div class="rowcard"><div class="rh"><span><b>${h(it.nama)}</b> <span class="muted">(${it.bagian === 'FOH' ? 'FOH' : 'Kitchen'})</span></span>${invBadge(it.status)}</div><div class="muted" style="font-size:12px">Sisa: ${h(it.sisa)} ${h(it.satuan)}${it.stokMin !== null && it.stokMin !== undefined ? ' · Min: ' + h(it.stokMin) : ''}</div></div>`).join('');
+}
+
+/* ===================== Opname Stok (input sisa fisik) ===================== */
+const OP = { master: [], q: '', cart: [], catatan: '' };
+async function renderOpname() {
+  page('Opname Stok', '<div class="muted center mt">Memuat daftar…</div>');
+  if (!OP.master.length) {
+    try { OP.master = await apiStock('order_master'); }
+    catch (e) { return page('Opname Stok', `<div class="card"><div class="muted">${h(e.message)}</div><button class="btn mt" onclick="renderOpname()">Coba lagi</button></div>`); }
+  }
+  drawOpname();
+}
+function opListHtml() {
+  const q = OP.q.trim().toLowerCase();
+  const arr = q ? OP.master.filter(m => m.barang.toLowerCase().indexOf(q) >= 0) : OP.master;
+  const list = arr.slice(0, 40);
+  return list.map(m => { const i = OP.master.indexOf(m); const inCart = OP.cart.some(c => c._i === i);
+    return `<div class="cb" onclick="opPick(${i})"><div class="grow"><b>${h(m.barang)}</b> <span class="muted">${h(m.satuan)}</span><div class="muted" style="font-size:12px">${m.bagian === 'FOH' ? 'FOH' : 'Kitchen'}</div></div><div class="btn sm ${inCart ? 'ok' : ''}" style="pointer-events:none">${inCart ? '✓' : '+'}</div></div>`;
+  }).join('') + (arr.length > 40 ? `<div class="muted center mt">…${arr.length - 40} item lagi, ketik lebih spesifik</div>` : (arr.length ? '' : '<div class="muted center">Tidak ada yang cocok</div>'));
+}
+function drawOpname() {
+  let body = `<div class="banner">Isi jumlah barang yang MASIH ADA (sisa fisik) sekarang. Sistem otomatis hitung terpakai & status menipis/habis. Data masuk tidak berubah.</div>`;
+  body += `<div class="card"><input type="text" id="opQ" placeholder="Cari barang (${OP.master.length} item)…" value="${h(OP.q)}" autocomplete="off"><div id="opList" style="margin-top:8px">${opListHtml()}</div></div>`;
+  body += `<h3 style="margin:14px 0 8px;font-size:14px;color:var(--mut)">Hitungan sisa (${OP.cart.length})</h3>`;
+  if (!OP.cart.length) body += '<div class="muted mb">Belum ada. Tap item + untuk mulai menghitung.</div>';
+  else {
+    body += OP.cart.map((c, i) => `<div class="rowcard"><div class="rh"><span>${h(c.barang)} <span class="muted">(${c.bagian === 'FOH' ? 'FOH' : 'Kitchen'})</span></span><button class="btn sm ghost" onclick="opDel(${i})">Hapus</button></div>
+      <div class="row mt"><input type="text" inputmode="decimal" style="flex:1" value="${h(c.sisa)}" oninput="OP.cart[${i}].sisa=this.value" placeholder="Sisa fisik"><div class="muted" style="min-width:64px;text-align:right">${h(c.satuan || '')}</div></div></div>`).join('');
+    body += `<label class="f">Catatan (opsional)</label><input type="text" id="opCat" placeholder="mis. opname shift sore" value="${h(OP.catatan || '')}" oninput="OP.catatan=this.value">`;
+    body += `<button class="btn primary mt" onclick="opKirim()">Simpan opname ${OP.cart.length} barang</button>`;
+  }
+  page('Opname Stok', body);
+  const inp = $('opQ');
+  if (inp) { inp.addEventListener('input', e => { OP.q = e.target.value; const el = $('opList'); if (el) el.innerHTML = opListHtml(); }); }
+}
+function opPick(i) {
+  const m = OP.master[i]; if (!m) return;
+  if (OP.cart.some(c => c._i === i)) { toast(m.barang + ' sudah di list'); return; }
+  OP.cart.push({ _i: i, bagian: m.bagian, barang: m.barang, satuan: m.satuan, sisa: '' });
+  drawOpname();
+}
+function opDel(i) { OP.cart.splice(i, 1); drawOpname(); }
+async function opKirim() {
+  if (!OP.cart.length) return;
+  const items = OP.cart.filter(c => String(c.sisa).trim() !== '').map(c => ({ bagian: c.bagian, barang: c.barang, satuan: c.satuan, sisa: String(c.sisa).trim() }));
+  if (!items.length) return toast('Isi sisa fisik dulu.');
+  loading(true, 'Simpan opname…');
+  try {
+    const r = await apiInv('opname_add', { items: items, oleh: S.staff.panggilan || S.staff.nama, catatan: OP.catatan || '' });
+    loading(false);
+    OP.cart = []; OP.catatan = ''; OP.q = '';
+    await ask('Opname Tersimpan', `<div class="center big">${(r && r.tersimpan) || items.length}</div><div class="muted center">sisa fisik dicatat.<br>Laporan menipis/habis otomatis ter-update.</div>`);
+    renderHome();
+  } catch (e) { loading(false); toast(e.message, 4000); }
+}
+
 async function renderOrder() {
   page('Order bahan / barang', '<div class="muted center mt">Memuat daftar master…</div>');
   if (!OM.master.length) {
@@ -352,16 +483,21 @@ S.cfg = await api('config'); loading(false); nav = []; history.replaceState({}, 
 function role() { return S.staff ? S.staff.role : 'staff'; }
 function roleAtLeast(r) { const o = { staff: 0, kepala: 1, manager: 2, owner: 3 }; return (o[role()] || 0) >= o[r]; }
 function tileIcon(key) {
-return ({ inputNota: '🧾', closing: '🌙', cekStockKitchen: '🥬', cekStockFOH: '🍹', bahanMasuk: '📦' })[key] || '📝';
+return ({ inputNota: '🧾', closing: '🌙', cekStockKitchen: '✏️', cekStockFOH: '✏️', bahanMasuk: '📦' })[key] || '📝';
 }
+// Ganti label tampilan form input stok lama, supaya tak bentrok dengan menu "Cek Stock" (tampilan) yang baru.
+const FORM_LABEL = { cekStockKitchen: 'Lapor Stok Kitchen', cekStockFOH: 'Lapor Stok FOH' };
 async function renderHome() {
 nav = [renderHome];
 const cfg = S.cfg;
-const tiles = (cfg.forms || []).map((f, i) => `<div class="tile" onclick="openForm(${i})"><div class="ic">${tileIcon(f.key)}</div><div class="lb">${h(f.title)}</div><div class="sb">${f.sumber === 'Stock' ? 'Stok' : 'Cashflow'}</div></div>`).join('');
-let extra = `<div class="tile" onclick="show(renderChecklist)"><div class="ic">✅</div><div class="lb">Checklist buka / tutup</div><div class="sb">${h(S.staff.divisi)}</div></div>
+const tiles = (cfg.forms || []).map((f, i) => `<div class="tile" onclick="openForm(${i})"><div class="ic">${tileIcon(f.key)}</div><div class="lb">${h(FORM_LABEL[f.key] || f.title)}</div><div class="sb">${f.sumber === 'Stock' ? 'Stok' : 'Cashflow'}</div></div>`).join('');
+let extra = `<div class="tile" onclick="show(renderInventory)"><div class="ic">📋</div><div class="lb">Cek Stock</div><div class="sb">Stok tersedia FOH & Kitchen</div></div>
+<div class="tile" onclick="show(renderOpname)"><div class="ic">📝</div><div class="lb">Opname Stok</div><div class="sb">Input sisa fisik barang</div></div>
+<div class="tile" onclick="show(renderChecklist)"><div class="ic">✅</div><div class="lb">Checklist buka / tutup</div><div class="sb">${h(S.staff.divisi)}</div></div>
 <div class="tile" onclick="show(renderIzin)"><div class="ic">🙋</div><div class="lb">Izin / sakit / cuti</div><div class="sb">Ajukan & lihat status</div></div>
 <div class="tile" onclick="show(renderJadwal)"><div class="ic">🗓️</div><div class="lb">Jadwal shift</div><div class="sb">${roleAtLeast('kepala') ? 'Lihat & atur' : 'Minggu ini'}</div></div>`;
 let mgr = '';
+if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderLaporanStok)"><div class="ic">⚠️</div><div class="lb">Laporan Stok</div><div class="sb">Menipis · habis · perlu order</div></div>`;
 if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderAbsensiHariIni)"><div class="ic">👥</div><div class="lb">Absensi hari ini</div><div class="sb">Siapa sudah masuk</div></div>`;
 if (roleAtLeast('manager')) mgr += `<div class="tile" onclick="show(renderRekap)"><div class="ic">📊</div><div class="lb">Rekap absensi</div><div class="sb">Per bulan, untuk gaji</div></div>`;
 if (roleAtLeast('manager') && cfg.links && cfg.links.daftarBelanja) mgr += `<div class="tile" onclick="window.open('${h(cfg.links.daftarBelanja)}','_blank')"><div class="ic">🛒</div><div class="lb">Daftar belanja</div><div class="sb">Kitchen + FOH, kirim WA</div></div>`;
