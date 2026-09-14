@@ -228,6 +228,13 @@ function drawLaporanStokBody(){
         while(wrap.firstChild) grid.appendChild(wrap.firstChild);
       }
     }catch(e){}
+    // Sembunyikan tile "Jadwal shift" dari selain Manager & Owner
+    try{
+      if(typeof roleAtLeast==='function' && !roleAtLeast('manager')){
+        var _tiles=document.querySelectorAll('.tile');
+        for(var _i=0;_i<_tiles.length;_i++){ if(/Jadwal shift/i.test(_tiles[_i].textContent||'')) _tiles[_i].style.display='none'; }
+      }
+    }catch(e){}
   }
   function patch(){
     try{
@@ -239,6 +246,19 @@ function drawLaporanStokBody(){
     }catch(e){}
     // Ganti menu "Laporan Stok" lama dengan ledger baru (tanpa edit index.html)
     try{ if(typeof window.lsfRender==='function'){ window.renderLaporanStok = window.lsfRender; } }catch(e){}
+    // Jadwal Shift: akses & edit khusus Manager & Owner
+    try{
+      if(typeof window.renderJadwal==='function' && !window.renderJadwal.__gated){
+        var _rj = window.renderJadwal;
+        window.renderJadwal = function(){
+          if(typeof roleAtLeast!=='function' || !roleAtLeast('manager')){
+            return page('Jadwal Shift', '<div class="card"><div class="center" style="padding:24px 12px"><div style="font-size:34px">&#128274;</div><div class="mt"><b>Khusus Manager &amp; Owner</b></div><div class="muted mt" style="font-size:12px">Menu jadwal shift hanya bisa diakses &amp; diubah oleh Manager dan Owner.</div></div></div>');
+          }
+          return _rj.apply(this, arguments);
+        };
+        window.renderJadwal.__gated = true;
+      }
+    }catch(e){}
     inject();
   }
   if(document.readyState==='complete') patch();
