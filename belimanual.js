@@ -1,6 +1,22 @@
 /* ===== BELI MANUAL + DAFTAR BELANJA (frontend, sisip sebelum function renderHome) ===== */
 var BLM = { list: [] };
 
+/* apiStock + auto-retry: Apps Script kadang balas UNAUTHORIZED/timeout pas cold start.
+   Ulang diam-diam beberapa kali sebelum benar-benar gagal. */
+async function blmApi(action, payload){
+  var last;
+  for(var i=0;i<4;i++){
+    try{ return await apiStock(action, payload||{}); }
+    catch(e){
+      last=e;
+      var msg=(e&&e.message)||String(e);
+      if(!/UNAUTHORIZED|Failed to fetch|NetworkError|network|timeout|Timeout|503|502/i.test(msg)) throw e;
+      await new Promise(function(r){ setTimeout(r, 700*(i+1)); });
+    }
+  }
+  throw last;
+}
+
 async function renderBeliManual(){
   var bag = (S.staff && (String(S.staff.divisi||'').toUpperCase().indexOf('FOH')>=0)) ? 'FOH' : 'KITCHEN';
   var L = function(t){ return '<div style="font-size:12px;color:var(--mut,#888);margin:10px 0 3px">'+t+'</div>'; };
@@ -26,7 +42,7 @@ async function blmKirim(){
   if(!jml || isNaN(Number(jml)) || Number(jml)<=0){ alert('Jumlah harus angka lebih dari 0'); return; }
   var btn=document.getElementById('blmKirim'); if(btn){ btn.disabled=true; btn.textContent='Mengirim…'; }
   try{
-    await apiStock('manual_add', {
+    await blmApi('manual_add', {
       barang: nama, bagian: g('bmBag'), jumlah: jml, satuan: g('bmSat'),
       kategori: g('bmKat'), harga: g('bmHrg'), supplier: g('bmSup'), catatan: g('bmCat'),
       idempotencyKey: 'bm-'+Date.now()+'-'+Math.random().toString(36).slice(2,8)
@@ -41,7 +57,7 @@ async function blmKirim(){
 
 async function renderBelanja(){
   page('Daftar Belanja', '<div class="muted center mt">Memuat…</div>');
-  try{ BLM.list = await apiStock('manual_list', {}) || []; }
+  try{ BLM.list = await blmApi('manual_list', {}) || []; }
   catch(e){ return page('Daftar Belanja', '<div class="card"><div class="muted">'+h((e&&e.message)||e)+'</div><button class="btn mt" onclick="renderBelanja()">Coba lagi</button></div>'); }
   drawBelanja();
 }
@@ -69,9 +85,13 @@ function drawBelanja(){
                + (it.supplier?' &middot; '+h(it.supplier):'')
                + (it.diterima?' &middot; <span style="color:#2e7d32">diterima</span>':'');
       var ctl = '';
-      if(isAdmin){
+      // Status order: SEMUA orang boleh ubah (siap order / sudah order)
+      if(it.status!=='DIBATALKAN'){
         if(it.status==='BARU')         ctl += '<button class="btn sm ghost" onclick="bmAct(\''+it.id+'\',\'belanja_set_ready\')">Siap order</button>';
-        if(it.status!=='SUDAH DIORDER'&&it.status!=='DIBATALKAN') ctl += '<button class="btn sm ghost" onclick="bmAct(\''+it.id+'\',\'belanja_mark_ordered\')">Sudah diorder</button>';
+        if(it.status!=='SUDAH DIORDER') ctl += '<button class="btn sm ghost" onclick="bmAct(\''+it.id+'\',\'belanja_mark_ordered\')">Sudah diorder</button>';
+      }
+      // Konfirmasi terima, promote ke master, batal: khusus admin (kepala+)
+      if(isAdmin){
         if(!it.diterima && it.status!=='DIBATALKAN') ctl += '<button class="btn sm" onclick="bmRecv(\''+it.id+'\')">Terima</button>';
         if(it.manual && !it.promoted) ctl += '<button class="btn sm ghost" onclick="bmProm(\''+it.id+'\')">+ Master</button>';
         if(it.status!=='DIBATALKAN' && it.status!=='SUDAH DIORDER') ctl += '<button class="btn sm ghost" onclick="bmAct(\''+it.id+'\',\'belanja_cancel\')">Batal</button>';
@@ -87,17 +107,17 @@ function drawBelanja(){
 }
 
 async function bmAct(id, action){
-  try{ await apiStock(action, {id:id}); renderBelanja(); }
+  try{ await blmApi(action, {id:id}); renderBelanja(); }
   catch(e){ alert('Gagal: '+((e&&e.message)||e)); }
 }
 async function bmRecv(id){
   if(!confirm('Tandai barang ini DITERIMA & catat ke Barang Masuk?')) return;
-  try{ await apiStock('manual_receive', {id:id}); alert('Barang diterima & dicatat ke Barang Masuk.'); renderBelanja(); }
+  try{ await blmApi('manual_receive', {id:id}); alert('Barang diterima & dicatat ke Barang Masuk.'); renderBelanja(); }
   catch(e){ alert('Gagal: '+((e&&e.message)||e)); }
 }
 async function bmProm(id){
   if(!confirm('Tambahkan barang ini ke Master (jadi barang tetap)?')) return;
-  try{ var r=await apiStock('manual_promote', {id:id}); alert('Ditambahkan ke Master.'); renderBelanja(); }
+  try{ var r=await blmApi('manual_promote', {id:id}); alert('Ditambahkan ke Master.'); renderBelanja(); }
   catch(e){ alert('Gagal: '+((e&&e.message)||e)); }
 }
 
