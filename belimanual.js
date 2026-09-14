@@ -1,5 +1,5 @@
 /* ===== BELI MANUAL + DAFTAR BELANJA (frontend, sisip sebelum function renderHome) ===== */
-var BM = { list: [] };
+var BLM = { list: [] };
 
 async function renderBeliManual(){
   var bag = (S.staff && (String(S.staff.divisi||'').toUpperCase().indexOf('FOH')>=0)) ? 'FOH' : 'KITCHEN';
@@ -13,18 +13,18 @@ async function renderBeliManual(){
     + '<div style="flex:1">'+L('Estimasi harga')+'<input id="bmHrg" type="text" inputmode="numeric" placeholder="cth: 20000"></div></div>'
     + L('Supplier (opsional)') + '<input id="bmSup" type="text" placeholder="nama supplier">'
     + L('Catatan (opsional)') + '<input id="bmCat" type="text" placeholder="alasan / detail">'
-    + '<button class="btn mt" id="bmKirim" onclick="bmKirim()">Tambah ke Daftar Belanja</button>'
+    + '<button class="btn mt" id="blmKirim" onclick="blmKirim()">Tambah ke Daftar Belanja</button>'
     + '</div>'
     + '<div class="muted center mt" style="font-size:12px">Barang manual masuk Daftar Belanja dengan status BARU. Admin konfirmasi saat barang diterima & bisa menambahkannya ke Master.</div>';
   page('Beli Manual', html);
 }
 
-async function bmKirim(){
+async function blmKirim(){
   var g = function(id){ var el=document.getElementById(id); return el? String(el.value||'').trim() : ''; };
   var nama=g('bmNama'), jml=g('bmJml');
   if(!nama){ alert('Nama barang wajib diisi'); return; }
   if(!jml || isNaN(Number(jml)) || Number(jml)<=0){ alert('Jumlah harus angka lebih dari 0'); return; }
-  var btn=document.getElementById('bmKirim'); if(btn){ btn.disabled=true; btn.textContent='Mengirim…'; }
+  var btn=document.getElementById('blmKirim'); if(btn){ btn.disabled=true; btn.textContent='Mengirim…'; }
   try{
     await apiStock('manual_add', {
       barang: nama, bagian: g('bmBag'), jumlah: jml, satuan: g('bmSat'),
@@ -41,7 +41,7 @@ async function bmKirim(){
 
 async function renderBelanja(){
   page('Daftar Belanja', '<div class="muted center mt">Memuat…</div>');
-  try{ BM.list = await apiStock('manual_list', {}) || []; }
+  try{ BLM.list = await apiStock('manual_list', {}) || []; }
   catch(e){ return page('Daftar Belanja', '<div class="card"><div class="muted">'+h((e&&e.message)||e)+'</div><button class="btn mt" onclick="renderBelanja()">Coba lagi</button></div>'); }
   drawBelanja();
 }
@@ -55,7 +55,7 @@ function bmBadgeColor(st){
 
 function drawBelanja(){
   var isAdmin = (typeof roleAtLeast==='function') ? roleAtLeast('kepala') : false;
-  var items = BM.list || [];
+  var items = BLM.list || [];
   var body = '<div class="row mb"><button class="btn sm" onclick="show(renderBeliManual)">+ Beli Manual</button>'
            + '<button class="btn sm ghost" onclick="renderBelanja()">&#8635; Refresh</button></div>';
   if(!items.length){ body += '<div class="muted center mt">Belum ada item di daftar belanja.</div>'; }
