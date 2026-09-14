@@ -121,6 +121,99 @@ async function bmProm(id){
   catch(e){ alert('Gagal: '+((e&&e.message)||e)); }
 }
 
+/* ===== LAPORAN STOK (LEDGER) — Fase 2 ===== */
+var LSF = { data:null, bagian:'SEMUA', periode:'30', kategori:'', cari:'' };
+
+function lsfPeriodDates(){
+  var today = new Date();
+  var d = new Date(today.getTime());
+  if(LSF.periode==='7')       d.setDate(d.getDate()-7);
+  else if(LSF.periode==='30') d.setDate(d.getDate()-30);
+  else if(LSF.periode==='bulan') d = new Date(today.getFullYear(), today.getMonth(), 1);
+  else return { dari:'', sampai:'' }; // semua
+  var iso = function(x){ return x.getFullYear()+'-'+('0'+(x.getMonth()+1)).slice(-2)+'-'+('0'+x.getDate()).slice(-2); };
+  return { dari: iso(d), sampai: iso(today) };
+}
+function lsfStatusColor(st){
+  st = String(st||'').toLowerCase();
+  if(st.indexOf('habis')>=0)   return '#b23b3b';
+  if(st.indexOf('menipis')>=0) return '#c8791f';
+  if(st.indexOf('aman')>=0)    return '#2e7d32';
+  return '#8a8a8a';
+}
+function lsfNum(n){ n = Number(n)||0; return (Math.round(n*100)/100).toLocaleString('id-ID'); }
+function lsfSet(k,v){ LSF[k]=v; lsfRender(); }
+
+async function lsfRender(){
+  page('Laporan Stok', '<div class="muted center mt">Memuat…</div>');
+  var pd = lsfPeriodDates();
+  try{
+    var r = await blmApi('stok_ledger', { bagian:LSF.bagian, dari:pd.dari, sampai:pd.sampai, kategori:LSF.kategori });
+    LSF.data = (r && r.data) ? r.data : r;
+  }catch(e){
+    return page('Laporan Stok', '<div class="card"><div class="muted">'+h((e&&e.message)||e)+'</div><button class="btn mt" onclick="lsfRender()">Coba lagi</button></div>');
+  }
+  drawLaporanStok();
+}
+
+function drawLaporanStok(){
+  var d = LSF.data || { rows:[], summary:{} };
+  var s = d.summary || {};
+  var chip = function(txt,active,onclick){ return '<button class="btn sm '+(active?'':'ghost')+'" onclick="'+onclick+'">'+txt+'</button>'; };
+  var bagBar = '<div class="row" style="gap:6px;flex-wrap:wrap">'
+    + chip('Semua',  LSF.bagian==='SEMUA',  "lsfSet('bagian','SEMUA')")
+    + chip('Kitchen',LSF.bagian==='KITCHEN',"lsfSet('bagian','KITCHEN')")
+    + chip('FOH',    LSF.bagian==='FOH',    "lsfSet('bagian','FOH')")
+    + '</div>';
+  var perBar = '<div class="row mt" style="gap:6px;flex-wrap:wrap">'
+    + chip('7 hari',   LSF.periode==='7',    "lsfSet('periode','7')")
+    + chip('30 hari',  LSF.periode==='30',   "lsfSet('periode','30')")
+    + chip('Bulan ini',LSF.periode==='bulan',"lsfSet('periode','bulan')")
+    + chip('Semua',    LSF.periode==='semua',"lsfSet('periode','semua')")
+    + '</div>';
+  var stat = function(lbl,val,col){ return '<div style="flex:1;min-width:78px;background:var(--card,#fff);border:1px solid var(--line,#eee);border-radius:10px;padding:8px 10px"><div style="font-size:11px;color:var(--mut,#888)">'+lbl+'</div><div style="font-size:16px;font-weight:600'+(col?';color:'+col:'')+'">'+val+'</div></div>'; };
+  var sumBar = '<div class="row mt" style="gap:6px;flex-wrap:wrap">'
+    + stat('Jumlah barang', s.jumlahBarang||0)
+    + stat('Stok saat ini', lsfNum(s.stokSaatIni))
+    + stat('Menipis', s.menipis||0, '#c8791f')
+    + stat('Habis', s.habis||0, '#b23b3b')
+    + '</div>';
+  var cari = '<input id="lsfCari" type="text" placeholder="cari barang / kategori…" value="'+h(LSF.cari)+'" oninput="LSF.cari=this.value; drawLaporanStokBody()" class="mt">';
+  page('Laporan Stok', '<div class="card">'+bagBar+perBar+sumBar+cari+'</div><div id="lsfBody"></div>');
+  drawLaporanStokBody();
+}
+
+function drawLaporanStokBody(){
+  var d = LSF.data || { rows:[] };
+  var rows = (d.rows||[]);
+  var q = String(LSF.cari||'').toLowerCase();
+  if(q) rows = rows.filter(function(r){ return String(r.barang).toLowerCase().indexOf(q)>=0 || String(r.kategori).toLowerCase().indexOf(q)>=0; });
+  var el = document.getElementById('lsfBody'); if(!el) return;
+  if(!rows.length){ el.innerHTML = '<div class="muted center mt">Tidak ada barang.</div>'; return; }
+  var pill = function(txt,bg){ return '<span style="font-size:10px;padding:2px 7px;border-radius:999px;color:#fff;background:'+bg+'">'+h(txt)+'</span>'; };
+  var mv = function(lbl,val){ return '<div style="text-align:center;flex:1"><div style="font-size:10px;color:var(--mut,#888)">'+lbl+'</div><div style="font-size:13px;font-weight:600">'+val+'</div></div>'; };
+  var html = rows.map(function(r){
+    var stCol = lsfStatusColor(r.status);
+    var bagPill = pill(r.bagian, r.bagian==='FOH'?'#3a5c7a':'#5a3222');
+    var stPill = r.status ? (' '+pill(r.status, stCol)) : '';
+    var keluarTxt = lsfNum(r.keluar); if(Number(r.keluar)<0) keluarTxt = '<span style="color:#b23b3b">'+keluarTxt+'</span>';
+    var subline = (r.kategori?h(r.kategori):'') + (r.kategori&&r.kadaluarsa?' · ':'') + (r.kadaluarsa?'exp '+h(r.kadaluarsa):'');
+    return '<div class="rowcard">'
+      + '<div class="rh"><span><b>'+h(r.barang)+'</b> '+bagPill+stPill+'</span><span style="font-weight:700">'+lsfNum(r.stokAkhir)+' '+h(r.satuan||'')+'</span></div>'
+      + (subline?'<div class="muted" style="font-size:11px;margin-top:2px">'+subline+'</div>':'')
+      + '<div class="row mt" style="background:var(--bg,#f7f7f7);border-radius:8px;padding:6px 4px">'
+        + mv('Awal', lsfNum(r.stokAwal)) + mv('Masuk', lsfNum(r.masuk)) + mv('Keluar', keluarTxt) + mv('Penyesuaian', lsfNum(r.penyesuaian)) + mv('Akhir', lsfNum(r.stokAkhir))
+      + '</div></div>';
+  }).join('');
+  var note = '<div class="muted mt" style="font-size:11px;line-height:1.6">'
+    + '<b>Cara baca:</b> <b>Stok Akhir</b> = sisa terakhir dari Cek Stock (yang paling akurat). '
+    + '<b>Keluar</b> (terpakai) = Awal + Masuk + Penyesuaian − Akhir, dihitung otomatis. '
+    + '<b>Masuk</b> diambil dari Barang Masuk (terisi saat Beli Manual → Terima / order diterima). '
+    + 'Kalau Keluar berwarna merah (negatif): stok awal belum tercatat di periode ini — butuh minimal 2× cek stok biar akurat.'
+    + '</div>';
+  el.innerHTML = html + note;
+}
+
 /* ===== SELF-INSTALL: sisipkan 2 tile ke Home tanpa mengubah renderHome ===== */
 (function(){
   function inject(){
@@ -144,6 +237,8 @@ async function bmProm(id){
         window.renderHome.__bmPatched = true;
       }
     }catch(e){}
+    // Ganti menu "Laporan Stok" lama dengan ledger baru (tanpa edit index.html)
+    try{ if(typeof window.lsfRender==='function'){ window.renderLaporanStok = window.lsfRender; } }catch(e){}
     inject();
   }
   if(document.readyState==='complete') patch();
