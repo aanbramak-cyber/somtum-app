@@ -437,7 +437,7 @@ async function maSubmit() {
       const el = $('omList'); if (el) el.innerHTML = omListHtml();
     }
   } catch (e) {
-    toast(e.message || 'Gagal menyimpan', 4000);
+    MA.busy = false; closeModal(); await ask('Gagal menyimpan', `<div class="muted">${h((e && e.message) || 'Gagal menyimpan')}</div>`);
   } finally {
     MA.busy = false;
     const btn2 = $('maSaveBtn'); if (btn2) { btn2.disabled = false; btn2.textContent = 'Simpan'; }
