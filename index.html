@@ -159,7 +159,7 @@ async function apiStock(action, payload) {
   if (!j.ok) throw new Error(j.error || 'Gagal');
   return j.data;
 }
-const OM = { master: [], cart: [], q: '', cat: '' };
+const OM = { master: [], cart: [], q: '', cat: '', bagian: '' };
 /* ===================== barang masuk (goods received) ===================== */
 const BM = { master: [], q: '', cart: [], catatan: '' }; // BM = Barang Masuk
 
@@ -351,7 +351,7 @@ async function opKirim() {
 }
 
 async function renderOrder() {
-  page('Order bahan / barang', '<div class="muted center mt">Memuat daftar master…</div>');
+  page('Order bahan / barang', '<div class="muted center mt">Memuat daftar master…</div>'); if (!OM.bagian) { const dv = String((S.staff && S.staff.divisi) || '').toLowerCase(); OM.bagian = dv === 'kitchen' ? 'KITCHEN' : dv === 'foh' ? 'FOH' : 'all'; }
   if (!OM.master.length) {
     try { OM.master = await apiStock('order_master'); }
     catch (e) { return page('Order bahan / barang', `<div class="card"><div class="muted">${h(e.message)}</div><button class="btn mt" onclick="renderOrder()">Coba lagi</button></div>`); }
@@ -360,14 +360,14 @@ async function renderOrder() {
 }
 function omListHtml() {
   const q = OM.q.trim().toLowerCase();
-  const arr = q ? OM.master.filter(m => m.barang.toLowerCase().indexOf(q) >= 0 || (m.supplier || '').toLowerCase().indexOf(q) >= 0) : OM.master;
+  const base = OM.bagian && OM.bagian !== 'all' ? OM.master.filter(m => String(m.bagian || '').toUpperCase() === OM.bagian) : OM.master; const arr = q ? base.filter(m => m.barang.toLowerCase().indexOf(q) >= 0 || (m.supplier || '').toLowerCase().indexOf(q) >= 0) : base;
   const list = arr.slice(0, 40);
   return list.map(m => { const i = OM.master.indexOf(m); const inCart = OM.cart.some(c => c._i === i);
     return `<div class="cb" onclick="omPick(${i})"><div class="grow"><b>${h(m.barang)}</b> <span class="muted">${h(m.satuan)}</span><div class="muted" style="font-size:12px">${m.bagian === 'FOH' ? 'FOH' : 'Kitchen'} · ${h(m.supplier || '-')}</div></div><div class="btn sm ${inCart ? 'ok' : ''}" style="pointer-events:none">${inCart ? '✓' : '＋'}</div></div>`;
   }).join('') + (arr.length > 40 ? `<div class="muted center mt">…${arr.length - 40} item lagi, ketik lebih spesifik</div>` : (arr.length ? '' : '<div class="muted center">Tidak ada yang cocok</div>'));
 }
-function drawOrder() {
-  let body = `<div class="card"><input type="text" id="omQ" placeholder="Cari bahan / barang (${OM.master.length} item)…" value="${h(OM.q)}" autocomplete="off"><div id="omList" style="margin-top:8px">${omListHtml()}</div></div>`;
+function omSetBagian(b) { OM.bagian = b; drawOrder(); } function drawOrder() {
+  let body = `<div class="chips mb"><button class="chipb ${OM.bagian === 'all' ? 'on' : ''}" onclick="omSetBagian('all')">Semua</button><button class="chipb ${OM.bagian === 'KITCHEN' ? 'on' : ''}" onclick="omSetBagian('KITCHEN')">Kitchen</button><button class="chipb ${OM.bagian === 'FOH' ? 'on' : ''}" onclick="omSetBagian('FOH')">FOH</button></div><div class="card"><input type="text" id="omQ" placeholder="Cari bahan / barang (${OM.master.length} item)…" value="${h(OM.q)}" autocomplete="off"><div id="omList" style="margin-top:8px">${omListHtml()}</div></div>`;
   if (roleAtLeast('kepala')) body += `<button class="btn ghost mt" style="width:100%" onclick="maShow()">+ Barang Baru</button>`;
   
   body += `<h3 style="margin:14px 0 8px;font-size:14px;color:var(--mut)">Keranjang order (${OM.cart.length})</h3>`;
