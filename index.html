@@ -426,7 +426,7 @@ async function maSubmit() {
   MA.busy = true;
   const btn = $('maSaveBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan…'; }
   try {
-    const r = await apiStock('master_add', { barang: nama, bagian: bagian, supplier: supplier, satuan: satuan, oleh: S.staff.panggilan || S.staff.nama });
+    let r = await apiStock('master_add', { barang: nama, bagian: bagian, supplier: supplier, satuan: satuan, oleh: S.staff.panggilan || S.staff.nama });
     if (r && r.duplicate) {
       closeModal();
       await ask('Barang sudah ada', `<div class="muted">"${h(r.data.barang)}" sudah ada di master (${r.data.bagian === 'FOH' ? 'FOH' : 'Kitchen'}, ${h(r.data.satuan || '-')}, ${h(r.data.supplier || '-')}). Silakan pilih dari daftar yang sudah ada.</div>`);
