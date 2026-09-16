@@ -778,25 +778,25 @@ page('Izin / sakit / cuti', `<div class="card"><h3>Ajukan</h3><label class="f">J
 <label class="f">Tanggal mulai</label><input type="date" id="izMulai" value="${h(IZ.mulai || todayStr())}">
 <label class="f">Tanggal selesai</label><input type="date" id="izSelesai" value="${h(IZ.selesai || '')}">
 <label class="f">Alasan</label><textarea id="izAlasan" placeholder="Contoh: acara keluarga / demam">${h(IZ.alasan || '')}</textarea>
-<button class="btn primary mt" onclick="kirimIzin()">Ajukan</button></div>
+${IZ.jenis === 'Sakit' ? `<label class="f">Surat dokter (wajib)</label>${IZ.surat ? `<img src="${IZ.surat}" class="thumb mb" alt="">` : ''}<button class="btn" onclick="izSurat()">📷 ${IZ.surat ? 'Ganti surat dokter' : 'Upload surat dokter'}</button><div class="muted" style="font-size:12px;margin-top:6px">Sakit wajib melampirkan surat dokter. Tanpa surat, pengajuan tidak bisa dikirim &amp; gaji hari itu tidak dihitung.</div>` : ''}<button class="btn primary mt" onclick="kirimIzin()">Ajukan</button></div>
 <div id="izList"><div class="muted center">Memuat…</div></div>`);
 ['izMulai', 'izSelesai', 'izAlasan'].forEach(id => $(id).addEventListener('input', e => IZ[id === 'izMulai' ? 'mulai' : id === 'izSelesai' ? 'selesai' : 'alasan'] = e.target.value));
 loadIzin();
 }
-async function loadIzin() {
+async function izSurat() { const f = await ambilFoto('environment'); if (f) { IZ.surat = f; renderIzin(); } } function izAlasanHtml(x) { x = String(x || ''); const m = x.match(/(https?:\/\/\S+)/); if (m) { return h(x.slice(0, m.index)) + `<a href="${h(m[1])}" target="_blank">📄 Lihat surat dokter</a>`; } return h(x); } async function loadIzin() {
 try {
 const list = await api('izin_list');
 const mgr = roleAtLeast('manager');
-$('izList').innerHTML = `<h3 style="font-size:14px;color:var(--mut);margin:14px 0 8px">${roleAtLeast('kepala') ? 'Pengajuan staff' : 'Pengajuan saya'}</h3>` + (list.length ? list.map(r => `<div class="card"><div class="row"><div class="grow"><b>${h(r.nama)}</b> · ${h(r.jenis)}<div class="muted">${h(r.mulai)}${r.selesai && r.selesai !== r.mulai ? ' s/d ' + h(r.selesai) : ''}</div><div class="muted">${h(r.alasan)}</div></div><span class="badge ${r.status === 'Disetujui' ? 'b-ok' : r.status === 'Ditolak' ? 'b-bad' : 'b-warn'}">${h(r.status)}</span></div>
+$('izList').innerHTML = `<h3 style="font-size:14px;color:var(--mut);margin:14px 0 8px">${roleAtLeast('kepala') ? 'Pengajuan staff' : 'Pengajuan saya'}</h3>` + (list.length ? list.map(r => `<div class="card"><div class="row"><div class="grow"><b>${h(r.nama)}</b> · ${h(r.jenis)}<div class="muted">${h(r.mulai)}${r.selesai && r.selesai !== r.mulai ? ' s/d ' + h(r.selesai) : ''}</div><div class="muted">${izAlasanHtml(r.alasan)}</div></div><span class="badge ${r.status === 'Disetujui' ? 'b-ok' : r.status === 'Ditolak' ? 'b-bad' : 'b-warn'}">${h(r.status)}</span></div>
 ${mgr && r.status === 'Menunggu' ? `<div class="row mt"><button class="btn sm grow" onclick="setIzin('${h(r.id)}','Ditolak')">Tolak</button><button class="btn sm ok grow" onclick="setIzin('${h(r.id)}','Disetujui')">Setujui</button></div>` : r.oleh ? `<div class="muted">oleh ${h(r.oleh)}</div>` : ''}</div>`).join('') : '<div class="muted center">Belum ada pengajuan.</div>');
 } catch (e) { $('izList').innerHTML = `<div class="muted">${h(e.message)}</div>`; }
 }
 async function kirimIzin() {
 const mulai = $('izMulai').value, selesai = $('izSelesai').value || mulai, alasan = $('izAlasan').value.trim();
 if (!mulai) return toast('Isi tanggal mulai.');
-if (!alasan) return toast('Isi alasannya.');
+if (!alasan) return toast('Isi alasannya.'); if (IZ.jenis === 'Sakit' && !IZ.surat) return toast('Sakit wajib upload surat dokter.');
 loading(true, 'Mengirim…');
-try { await api('izin_ajukan', { jenis: IZ.jenis, tglMulai: mulai, tglSelesai: selesai, alasan: alasan }); loading(false); IZ.alasan = ''; IZ.selesai = ''; toast('Pengajuan terkirim, menunggu persetujuan.'); renderIzin(); }
+try { await api('izin_ajukan2', { jenis: IZ.jenis, tglMulai: mulai, tglSelesai: selesai, alasan: alasan, surat: IZ.surat || '' }); loading(false); IZ.alasan = ''; IZ.selesai = ''; IZ.surat = ''; toast('Pengajuan terkirim, menunggu persetujuan.'); renderIzin(); }
 catch (e) { loading(false); toast(e.message, 4000); }
 }
 async function setIzin(id, status) {
