@@ -426,14 +426,14 @@ async function maSubmit() {
   MA.busy = true;
   const btn = $('maSaveBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan…'; }
   try {
-    let r = await apiStock('master_add', { barang: nama, bagian: bagian, supplier: supplier, satuan: satuan, oleh: S.staff.panggilan || S.staff.nama });
+    let r = await apiStock('master_add', { supplierWa: supWa, supplierKontak: supKontak, supplierAlamat: supAlamat, barang: nama, bagian: bagian, supplier: supplier, satuan: satuan, oleh: S.staff.panggilan || S.staff.nama });
     if (r && r.duplicate) {
       closeModal();
       await ask('Barang sudah ada', `<div class="muted">"${h(r.data.barang)}" sudah ada di master (${r.data.bagian === 'FOH' ? 'FOH' : 'Kitchen'}, ${h(r.data.satuan || '-')}, ${h(r.data.supplier || '-')}). Silakan pilih dari daftar yang sudah ada.</div>`);
     } else if (r && (r.data || r.barang)) { if (!r.data) r = { data: r };
       OM.master.push({ bagian: r.data.bagian, barang: r.data.barang, supplier: r.data.supplier, satuan: r.data.satuan });
       closeModal();
-      let supMsg = ''; try { const su = await apiStock('supplier_upsert', { supplier: supplier, bagian: bagian, supplierWa: supWa, supplierKontak: supKontak, supplierAlamat: supAlamat }); if (su && su.baru) supMsg = ' · supplier baru tersimpan'; } catch (e2) {} toast('Barang baru ditambahkan' + supMsg, 3500);
+      toast(r.data.supplierBaru ? 'Barang & supplier baru tersimpan' : 'Barang baru ditambahkan', 3500);
       const el = $('omList'); if (el) el.innerHTML = omListHtml();
     }
   } catch (e) {
