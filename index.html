@@ -422,7 +422,7 @@ async function maSubmit() {
   const bagian = $('maBagian').value;
   const supplier = ($('maSupplier').value || '').trim();
   const satuan = ($('maSatuan').value || '').trim();
-  if (!nama || !supplier || !satuan) { toast('Nama, supplier, dan satuan wajib diisi'); return; }
+  if (!nama || !supplier || !satuan) { toast('Nama, supplier, dan satuan wajib diisi'); return; } const dup = OM.master.find(m => String(m.barang || '').trim().toLowerCase() === nama.toLowerCase()); if (dup) { closeModal(); await ask('Barang sudah ada', `<div class="muted">"${h(dup.barang)}" sudah ada di master (${dup.bagian === 'FOH' ? 'FOH' : 'Kitchen'}, ${h(dup.satuan || '-')}, ${h(dup.supplier || '-')}). Silakan pilih dari daftar yang sudah ada.</div>`); return; }
   MA.busy = true;
   const btn = $('maSaveBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan…'; }
   try {
@@ -430,7 +430,7 @@ async function maSubmit() {
     if (r && r.duplicate) {
       closeModal();
       await ask('Barang sudah ada', `<div class="muted">"${h(r.data.barang)}" sudah ada di master (${r.data.bagian === 'FOH' ? 'FOH' : 'Kitchen'}, ${h(r.data.satuan || '-')}, ${h(r.data.supplier || '-')}). Silakan pilih dari daftar yang sudah ada.</div>`);
-    } else if (r && r.data) {
+    } else if (r && (r.data || r.barang)) { if (!r.data) r = { data: r };
       OM.master.push({ bagian: r.data.bagian, barang: r.data.barang, supplier: r.data.supplier, satuan: r.data.satuan });
       closeModal();
       toast('Barang baru ditambahkan');
