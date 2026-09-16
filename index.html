@@ -410,7 +410,7 @@ function maShow() {
     <label class="f">Nama barang</label><input type="text" id="maNama" placeholder="mis. Kecap Manis">
     <label class="f">Bagian</label><select id="maBagian"><option value="KITCHEN">Kitchen</option><option value="FOH">FOH</option></select>
     <label class="f">Supplier</label><input type="text" id="maSupplier" placeholder="mis. UD DIAN PRIMA">
-    <label class="f">Satuan</label><input type="text" id="maSatuan" placeholder="mis. gr / ml / pcs">
+    <label class="f">Satuan</label><input type="text" id="maSatuan" placeholder="mis. gr / ml / pcs"> <div class="muted" style="font-size:12px;margin:10px 0 2px">Supplier baru? Isi kontaknya (opsional):</div> <label class="f">No. WA supplier</label><input type="text" id="maSupWa" inputmode="tel" placeholder="mis. 0812xxxxxxx"> <label class="f">Nama orang / kontak</label><input type="text" id="maSupKontak" placeholder="mis. Pak Made"> <label class="f">Alamat supplier</label><input type="text" id="maSupAlamat" placeholder="mis. Jl. ... Denpasar">
     <div class="row mt" style="gap:8px">
       <button class="btn" style="flex:1" onclick="closeModal()">Batal</button>
       <button class="btn primary" style="flex:1" id="maSaveBtn" onclick="maSubmit()">Simpan</button>
@@ -421,7 +421,7 @@ async function maSubmit() {
   const nama = ($('maNama').value || '').trim();
   const bagian = $('maBagian').value;
   const supplier = ($('maSupplier').value || '').trim();
-  const satuan = ($('maSatuan').value || '').trim();
+  const satuan = ($('maSatuan').value || '').trim(); const supWa = ($('maSupWa').value || '').trim(), supKontak = ($('maSupKontak').value || '').trim(), supAlamat = ($('maSupAlamat').value || '').trim();
   if (!nama || !supplier || !satuan) { toast('Nama, supplier, dan satuan wajib diisi'); return; } const dup = OM.master.find(m => String(m.barang || '').trim().toLowerCase() === nama.toLowerCase()); if (dup) { closeModal(); await ask('Barang sudah ada', `<div class="muted">"${h(dup.barang)}" sudah ada di master (${dup.bagian === 'FOH' ? 'FOH' : 'Kitchen'}, ${h(dup.satuan || '-')}, ${h(dup.supplier || '-')}). Silakan pilih dari daftar yang sudah ada.</div>`); return; }
   MA.busy = true;
   const btn = $('maSaveBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan…'; }
@@ -433,7 +433,7 @@ async function maSubmit() {
     } else if (r && (r.data || r.barang)) { if (!r.data) r = { data: r };
       OM.master.push({ bagian: r.data.bagian, barang: r.data.barang, supplier: r.data.supplier, satuan: r.data.satuan });
       closeModal();
-      toast('Barang baru ditambahkan');
+      let supMsg = ''; try { const su = await apiStock('supplier_upsert', { supplier: supplier, bagian: bagian, supplierWa: supWa, supplierKontak: supKontak, supplierAlamat: supAlamat }); if (su && su.baru) supMsg = ' · supplier baru tersimpan'; } catch (e2) {} toast('Barang baru ditambahkan' + supMsg, 3500);
       const el = $('omList'); if (el) el.innerHTML = omListHtml();
     }
   } catch (e) {
