@@ -368,6 +368,8 @@ function omListHtml() {
 }
 function drawOrder() {
   let body = `<div class="card"><input type="text" id="omQ" placeholder="Cari bahan / barang (${OM.master.length} item)…" value="${h(OM.q)}" autocomplete="off"><div id="omList" style="margin-top:8px">${omListHtml()}</div></div>`;
+  if (roleAtLeast('kepala')) body += `<button class="btn ghost mt" style="width:100%" onclick="maShow()">+ Barang Baru</button>`;
+  
   body += `<h3 style="margin:14px 0 8px;font-size:14px;color:var(--mut)">Keranjang order (${OM.cart.length})</h3>`;
   if (!OM.cart.length) body += '<div class="muted mb">Belum ada. Tap item + untuk menambah ke order.</div>';
   else {
@@ -399,6 +401,47 @@ async function omKirim() {
     await ask('Order terkirim', `<div class="center big">${(r && r.terkirim) || items.length}</div><div class="muted center">item masuk ke Daftar Belanja & Teks WA.<br>Setelah dibeli, centang "Dibeli" di sheet biar hilang.</div>`);
     renderHome();
   } catch (e) { loading(false); toast(e.message, 4000); }
+}
+  const MA = { busy: false };
+function maShow() {
+  if (!roleAtLeast('kepala')) return;
+  MA.busy = false;
+  modal(`<h3 style="margin:0 0 10px">Tambah Barang Baru</h3>
+    <label class="f">Nama barang</label><input type="text" id="maNama" placeholder="mis. Kecap Manis">
+    <label class="f">Bagian</label><select id="maBagian"><option value="KITCHEN">Kitchen</option><option value="FOH">FOH</option></select>
+    <label class="f">Supplier</label><input type="text" id="maSupplier" placeholder="mis. UD DIAN PRIMA">
+    <label class="f">Satuan</label><input type="text" id="maSatuan" placeholder="mis. gr / ml / pcs">
+    <div class="row mt" style="gap:8px">
+      <button class="btn" style="flex:1" onclick="closeModal()">Batal</button>
+      <button class="btn primary" style="flex:1" id="maSaveBtn" onclick="maSubmit()">Simpan</button>
+    </div>`);
+}
+async function maSubmit() {
+  if (MA.busy) return;
+  const nama = ($('maNama').value || '').trim();
+  const bagian = $('maBagian').value;
+  const supplier = ($('maSupplier').value || '').trim();
+  const satuan = ($('maSatuan').value || '').trim();
+  if (!nama || !supplier || !satuan) { toast('Nama, supplier, dan satuan wajib diisi'); return; }
+  MA.busy = true;
+  const btn = $('maSaveBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan…'; }
+  try {
+    const r = await apiStock('master_add', { barang: nama, bagian: bagian, supplier: supplier, satuan: satuan, oleh: S.staff.panggilan || S.staff.nama });
+    if (r && r.duplicate) {
+      closeModal();
+      await ask('Barang sudah ada', `<div class="muted">"${h(r.data.barang)}" sudah ada di master (${r.data.bagian === 'FOH' ? 'FOH' : 'Kitchen'}, ${h(r.data.satuan || '-')}, ${h(r.data.supplier || '-')}). Silakan pilih dari daftar yang sudah ada.</div>`);
+    } else if (r && r.data) {
+      OM.master.push({ bagian: r.data.bagian, barang: r.data.barang, supplier: r.data.supplier, satuan: r.data.satuan });
+      closeModal();
+      toast('Barang baru ditambahkan');
+      const el = $('omList'); if (el) el.innerHTML = omListHtml();
+    }
+  } catch (e) {
+    toast(e.message || 'Gagal menyimpan', 4000);
+  } finally {
+    MA.busy = false;
+    const btn2 = $('maSaveBtn'); if (btn2) { btn2.disabled = false; btn2.textContent = 'Simpan'; }
+  }
 }
 
 /* ===================== foto ===================== */
