@@ -77,11 +77,11 @@ body.has-nav main{padding-bottom:82px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tile{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px 12px;display:flex;flex-direction:column;gap:8px;min-height:96px;cursor:pointer;box-shadow:0 4px 14px rgba(20,20,20,.05);transition:transform .12s ease}
 .tile:active{transform:scale(.97)}
-.tile .ic{font-size:19px;width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--red-l)}
-.grid .tile:nth-of-type(5n+2) .ic{background:#eef0ff}
-.grid .tile:nth-of-type(5n+3) .ic{background:#e9f7f0}
-.grid .tile:nth-of-type(5n+4) .ic{background:#fff3e6}
-.grid .tile:nth-of-type(5n+5) .ic{background:#f3ecff}
+.tile .ic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--red-l);color:var(--red-d)}
+.grid .tile:nth-of-type(5n+2) .ic{background:#eef0ff;color:#4c5fd5}
+.grid .tile:nth-of-type(5n+3) .ic{background:#e9f7f0;color:#189267}
+.grid .tile:nth-of-type(5n+4) .ic{background:#fff3e6;color:#c4740a}
+.grid .tile:nth-of-type(5n+5) .ic{background:#f3ecff;color:#7c3aed}
 .tile .lb{font-weight:700;font-size:14px}
 .tile .sb{font-size:12px;color:var(--mut)}
 label.f{display:block;font-size:13px;color:var(--mut);margin:12px 0 5px;font-weight:600}
@@ -718,7 +718,8 @@ S.cfg = await api('config'); loading(false); nav = []; history.replaceState({}, 
 function role() { return S.staff ? S.staff.role : 'staff'; }
 function roleAtLeast(r) { const o = { staff: 0, kepala: 1, manager: 2, owner: 3 }; return (o[role()] || 0) >= o[r]; }
 function tileIcon(key) {
-return ({ inputNota: '🧾', closing: '🌙', cekStockKitchen: '✏️', cekStockFOH: '✏️', bahanMasuk: '📦' })[key] || '📝';
+const P = { inputNota: '<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/><path d="M9 13h6M9 17h6"/>', closing: '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>', cekStockKitchen: '<path d=\"M12 20h9\"/><path d=\"M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z\"/>', cekStockFOH: '<path d=\"M12 20h9\"/><path d=\"M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z\"/>', bahanMasuk: '<rect x=\"4\" y=\"7\" width=\"16\" height=\"13\" rx=\"2\"/><path d=\"M9 7V5a3 3 0 0 1 6 0v2\"/>' };
+return '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (P[key] || P.cekStockKitchen) + '</svg>';
 }
 // Ganti label tampilan form input stok lama, supaya tak bentrok dengan menu "Cek Stock" (tampilan) yang baru.
 const FORM_LABEL = { cekStockKitchen: 'Lapor Stok Kitchen', cekStockFOH: 'Lapor Stok FOH' };
@@ -726,19 +727,19 @@ async function renderHome() {
 nav = [renderHome];
 const cfg = S.cfg;
 const tiles = (cfg.forms || []).map((f, i) => `<div class="tile" onclick="openForm(${i})"><div class="ic">${tileIcon(f.key)}</div><div class="lb">${h(FORM_LABEL[f.key] || f.title)}</div><div class="sb">${f.sumber === 'Stock' ? 'Stok' : 'Cashflow'}</div></div>`).join('');
-let extra = `<div class="tile" onclick="show(renderInventory)"><div class="ic">📋</div><div class="lb">Cek Stock</div><div class="sb">Stok tersedia FOH & Kitchen</div></div>
-<div class="tile" onclick="show(renderOpname)"><div class="ic">📝</div><div class="lb">Opname Stok</div><div class="sb">Input sisa fisik barang</div></div>
-<div class="tile" onclick="show(renderChecklist)"><div class="ic">✅</div><div class="lb">Checklist buka / tutup</div><div class="sb">${h(S.staff.divisi)}</div></div>
-<div class="tile" onclick="show(renderIzin)"><div class="ic">🙋</div><div class="lb">Izin / sakit / cuti</div><div class="sb">Ajukan & lihat status</div></div>
-<div class="tile" onclick="show(renderJadwal)"><div class="ic">🗓️</div><div class="lb">Jadwal shift</div><div class="sb">${roleAtLeast('kepala') ? 'Lihat & atur' : 'Minggu ini'}</div></div>`;
+let extra = `<div class="tile" onclick="show(renderInventory)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><div class="lb">Cek Stock</div><div class="sb">Stok tersedia FOH & Kitchen</div></div>
+<div class="tile" onclick="show(renderOpname)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><div class="lb">Opname Stok</div><div class="sb">Input sisa fisik barang</div></div>
+<div class="tile" onclick="show(renderChecklist)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 5-5"/></svg><div class="lb">Checklist buka / tutup</div><div class="sb">${h(S.staff.divisi)}</div></div>
+<div class="tile" onclick="show(renderIzin)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><div class="lb">Izin / sakit / cuti</div><div class="sb">Ajukan & lihat status</div></div>
+<div class="tile" onclick="show(renderJadwal)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg><div class="lb">Jadwal shift</div><div class="sb">${roleAtLeast('kepala') ? 'Lihat & atur' : 'Minggu ini'}</div></div>`;
 let mgr = '';
-if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderLaporanStok)"><div class="ic">⚠️</div><div class="lb">Laporan Stok</div><div class="sb">Menipis · habis · perlu order</div></div>`;
-if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderAbsensiHariIni)"><div class="ic">👥</div><div class="lb">Absensi hari ini</div><div class="sb">Siapa sudah masuk</div></div>`;
-if (roleAtLeast('manager')) mgr += `<div class="tile" onclick="show(renderRekap)"><div class="ic">📊</div><div class="lb">Rekap absensi</div><div class="sb">Per bulan, untuk gaji</div></div>`;
-if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderDaftarBelanja)"><div class="ic">🛒</div><div class="lb">Daftar belanja</div><div class="sb">Kitchen + FOH, kirim WA</div></div>`;
-if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderOrder)"><div class="ic">🧺</div><div class="lb">Order bahan / barang</div><div class="sb">Pilih dari master → belanja</div></div>`;
-if (true) mgr += `<div class="tile" onclick="show(renderBarangMasuk)"><div class="ic">📦</div><div class="lb">Barang Masuk</div><div class="sb">Catat barang diterima</div></div>`;
-if (roleAtLeast('manager')) mgr += `<div class="tile" onclick="show(renderLaporanKeuangan)"><div class="ic">📈</div><div class="lb">Laporan keuangan</div><div class="sb">Omzet · belanja · stok · hutang</div></div>`;
+if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderLaporanStok)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/></svg><div class="lb">Laporan Stok</div><div class="sb">Menipis · habis · perlu order</div></div>`;
+if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderAbsensiHariIni)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.3 3-6 7-6s7 2.7 7 6"/><circle cx="17" cy="9" r="2.5"/></svg><div class="lb">Absensi hari ini</div><div class="sb">Siapa sudah masuk</div></div>`;
+if (roleAtLeast('manager')) mgr += `<div class="tile" onclick="show(renderRekap)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><div class="lb">Rekap absensi</div><div class="sb">Per bulan, untuk gaji</div></div>`;
+if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderDaftarBelanja)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="18" cy="21" r="1"/><path d="M2 3h2l2.6 12.4a2 2 0 0 0 2 1.6h8.8a2 2 0 0 0 2-1.6L21 7H6"/></svg><div class="lb">Daftar belanja</div><div class="sb">Kitchen + FOH, kirim WA</div></div>`;
+if (roleAtLeast('kepala')) mgr += `<div class="tile" onclick="show(renderOrder)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="18" cy="21" r="1"/><path d="M2 3h2l2.6 12.4a2 2 0 0 0 2 1.6h8.8a2 2 0 0 0 2-1.6L21 7H6"/></svg><div class="lb">Order bahan / barang</div><div class="sb">Pilih dari master → belanja</div></div>`;
+if (true) mgr += `<div class="tile" onclick="show(renderBarangMasuk)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></svg><div class="lb">Barang Masuk</div><div class="sb">Catat barang diterima</div></div>`;
+if (roleAtLeast('manager')) mgr += `<div class="tile" onclick="show(renderLaporanKeuangan)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><div class="lb">Laporan keuangan</div><div class="sb">Omzet · belanja · stok · hutang</div></div>`;
 const ios = /iphone|ipad/i.test(navigator.userAgent) && !window.navigator.standalone && !matchMedia('(display-mode: standalone)').matches;
 page('Somtum App', `${ios ? '<div class="banner">Supaya jadi icon di HP: tap tombol Bagikan (kotak panah) di Safari → <b>Tambah ke Layar Utama</b>.</div>' : ''}
 <div class="card" id="absenCard"><div class="muted">Memuat absensi…</div></div>
