@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/favicon.png">
 <script src="config.js"></script>
-  <script src="belimanual.js?v=6"></script>
+  <script src="belimanual.js?v=7"></script>
 <style>
 :root{--red:#e3342a;--red-d:#b8241c;--red-l:#fdecea;--ink:#1f1f1f;--mut:#6b6b6b;--line:#e6e6e6;--bg:#f6f4f2;--card:#fff;--ok:#1d9e75;--ok-l:#e1f5ee;--warn:#ba7517;--warn-l:#faeeda;--bad:#c62828;--bad-l:#fcebeb;--r:14px}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -190,7 +190,7 @@ function drawBarangMasuk() {
       <div class="row mt"><input type="text" inputmode="decimal" style="flex:1" value="${h(c.jumlah)}" oninput="BM.cart[${i}].jumlah=this.value" placeholder="Jumlah"><div class="muted" style="min-width:64px;text-align:right">${h(c.satuan || '')}</div></div>
       <div class="row mt" style="font-size:13px"><input type="text" style="flex:1" value="${h(c.supplier || '')}" oninput="BM.cart[${i}].supplier=this.value" placeholder="Supplier (opsional)"></div></div>`).join('');
     body += `<label class="f">Catatan (opsional)</label><input type="text" id="bmCat" placeholder="mis. kondisi barang" value="${h(BM.catatan || '')}" oninput="BM.catatan=this.value">`;
-    body += `<button class="btn primary mt" onclick="bmKirim()">Catat ${BM.cart.length} barang masuk</button>`;
+    body += `<button class="btn primary mt" id="bmKirimBtn" onclick="bmKirim()">Catat ${BM.cart.length} barang masuk</button>`;
   }
   page('Barang Masuk', body);
   const inp = $('bmQ');
@@ -201,22 +201,32 @@ function bmPick(i) {
   const m = BM.master[i]; if (!m) return;
   if (BM.cart.some(c => c._i === i)) { toast(m.barang + ' sudah di list'); return; }
   BM.cart.push({ _i: i, bagian: m.bagian, barang: m.barang, supplier: '', satuan: m.satuan, jumlah: '' });
+  BM._sendId = null;
   drawBarangMasuk();
 }
 
-function bmDel(i) { BM.cart.splice(i, 1); drawBarangMasuk(); }
+function bmDel(i) { BM.cart.splice(i, 1); BM._sendId = null; drawBarangMasuk(); }
 
 async function bmKirim() {
-  if (!BM.cart.length) return;
+  if (!BM.cart.length || BM._busy) return;
   const items = BM.cart.map(c => ({ bagian: c.bagian, barang: c.barang, supplier: c.supplier || '', satuan: c.satuan, jumlah: String(c.jumlah || '').trim() }));
-  loading(true, 'Catat barang masuk…');
+  const sig = JSON.stringify(items) + '|' + (BM.catatan || '');
+  if (BM._sendSig !== sig) { BM._sendId = null; BM._sendSig = sig; }
+  if (!BM._sendId) BM._sendId = 'bm' + Date.now() + Math.random().toString(36).slice(2, 8);
+  BM._busy = true;
+  const btn = $('bmKirimBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Mengirim… (bisa beberapa detik)'; }
+  loading(true, 'Catat barang masuk… jangan tutup halaman');
   try {
-    const r = await apiStock('barang_masuk_add', { items: items, oleh: S.staff.panggilan || S.staff.nama, catatan: BM.catatan || '' });
-    loading(false);
+    const r = await apiStock('barang_masuk_add', { items: items, oleh: S.staff.panggilan || S.staff.nama, catatan: BM.catatan || '', idempotencyKey: BM._sendId });
+    loading(false); BM._busy = false; BM._sendId = null;
     BM.cart = []; BM.catatan = ''; BM.q = '';
     await ask('Barang Masuk Tercatat', `<div class="center big">${(r && r.terima) || items.length}</div><div class="muted center">item dicatat di log.<br>Stok siap di-update manual atau otomatis.</div>`);
     renderHome();
-  } catch (e) { loading(false); toast(e.message, 4000); }
+  } catch (e) {
+    loading(false); BM._busy = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Catat ' + BM.cart.length + ' barang masuk'; }
+    toast(e.message + ' — tekan sekali lagi, aman tidak dobel.', 5000);
+  }
 }
 
 /* ===================== Cek Stock (tampilan) + Laporan Stok — Inventory API ===================== */
@@ -323,7 +333,7 @@ function drawOpname() {
     body += OP.cart.map((c, i) => `<div class="rowcard"><div class="rh"><span>${h(c.barang)} <span class="muted">(${c.bagian === 'FOH' ? 'FOH' : 'Kitchen'})</span></span><button class="btn sm ghost" onclick="opDel(${i})">Hapus</button></div>
       <div class="row mt"><input type="text" inputmode="decimal" style="flex:1" value="${h(c.sisa)}" oninput="OP.cart[${i}].sisa=this.value" placeholder="Sisa fisik"><div class="muted" style="min-width:64px;text-align:right">${h(c.satuan || '')}</div></div></div>`).join('');
     body += `<label class="f">Catatan (opsional)</label><input type="text" id="opCat" placeholder="mis. opname shift sore" value="${h(OP.catatan || '')}" oninput="OP.catatan=this.value">`;
-    body += `<button class="btn primary mt" onclick="opKirim()">Simpan opname ${OP.cart.length} barang</button>`;
+    body += `<button class="btn primary mt" id="opKirimBtn" onclick="opKirim()">Simpan opname ${OP.cart.length} barang</button>`;
   }
   page('Opname Stok', body);
   const inp = $('opQ');
@@ -333,21 +343,31 @@ function opPick(i) {
   const m = OP.master[i]; if (!m) return;
   if (OP.cart.some(c => c._i === i)) { toast(m.barang + ' sudah di list'); return; }
   OP.cart.push({ _i: i, bagian: m.bagian, barang: m.barang, satuan: m.satuan, sisa: '' });
+  OP._sendId = null;
   drawOpname();
 }
-function opDel(i) { OP.cart.splice(i, 1); drawOpname(); }
+function opDel(i) { OP.cart.splice(i, 1); OP._sendId = null; drawOpname(); }
 async function opKirim() {
-  if (!OP.cart.length) return;
+  if (!OP.cart.length || OP._busy) return;
   const items = OP.cart.filter(c => String(c.sisa).trim() !== '').map(c => ({ bagian: c.bagian, barang: c.barang, satuan: c.satuan, sisa: String(c.sisa).trim() }));
   if (!items.length) return toast('Isi sisa fisik dulu.');
-  loading(true, 'Simpan opname…');
+  const sig = JSON.stringify(items) + '|' + (OP.catatan || '');
+  if (OP._sendSig !== sig) { OP._sendId = null; OP._sendSig = sig; }
+  if (!OP._sendId) OP._sendId = 'op' + Date.now() + Math.random().toString(36).slice(2, 8);
+  OP._busy = true;
+  const btn = $('opKirimBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan… (bisa beberapa detik)'; }
+  loading(true, 'Simpan opname… jangan tutup halaman');
   try {
-    const r = await apiInv('opname_add', { items: items, oleh: S.staff.panggilan || S.staff.nama, catatan: OP.catatan || '' });
-    loading(false);
+    const r = await apiInv('opname_add', { items: items, oleh: S.staff.panggilan || S.staff.nama, catatan: OP.catatan || '', idempotencyKey: OP._sendId });
+    loading(false); OP._busy = false; OP._sendId = null;
     OP.cart = []; OP.catatan = ''; OP.q = '';
     await ask('Opname Tersimpan', `<div class="center big">${(r && r.tersimpan) || items.length}</div><div class="muted center">sisa fisik dicatat.<br>Laporan menipis/habis otomatis ter-update.</div>`);
     renderHome();
-  } catch (e) { loading(false); toast(e.message, 4000); }
+  } catch (e) {
+    loading(false); OP._busy = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Simpan opname ' + OP.cart.length + ' barang'; }
+    toast(e.message + ' — tekan sekali lagi, aman tidak dobel.', 5000);
+  }
 }
 
 async function renderOrder() {
@@ -377,7 +397,7 @@ function omSetBagian(b) { OM.bagian = b; drawOrder(); } function drawOrder() {
       <div class="row mt"><input type="text" inputmode="decimal" style="flex:1" value="${h(c.jumlah)}" oninput="OM.cart[${i}].jumlah=this.value" placeholder="Jumlah"><div class="muted" style="min-width:64px;text-align:right">${h(c.satuan || '')}</div></div>
       <div class="muted" style="font-size:12px;margin-top:5px">Supplier: ${h(c.supplier || '-')}</div></div>`).join('');
     body += `<label class="f">Catatan (opsional)</label><input type="text" id="omCat" value="${h(OM.cat || '')}" oninput="OM.cat=this.value" placeholder="mis. untuk stok akhir pekan">`;
-    body += `<button class="btn primary mt" onclick="omKirim()">Kirim ${OM.cart.length} order ke belanja</button>`;
+    body += `<button class="btn primary mt" id="omKirimBtn" onclick="omKirim()">Kirim ${OM.cart.length} order ke belanja</button>`;
   }
   page('Order bahan / barang', body);
   const inp = $('omQ');
@@ -387,20 +407,31 @@ function omPick(i) {
   const m = OM.master[i]; if (!m) return;
   if (OM.cart.some(c => c._i === i)) { toast(m.barang + ' sudah di keranjang'); return; }
   OM.cart.push({ _i: i, bagian: m.bagian, barang: m.barang, supplier: m.supplier, satuan: m.satuan, jumlah: '' });
+  OM._sendId = null;
   drawOrder();
 }
-function omDel(i) { OM.cart.splice(i, 1); drawOrder(); }
+function omDel(i) { OM.cart.splice(i, 1); OM._sendId = null; drawOrder(); }
 async function omKirim() {
-  if (!OM.cart.length) return;
-  const items = OM.cart.map(c => ({ bagian: c.bagian, barang: c.barang, supplier: c.supplier, satuan: c.satuan, jumlah: String(c.jumlah || '').trim() }));
-  loading(true, 'Mengirim order…');
+  if (!OM.cart.length || OM._busy) return;
+  const items = OM.cart.map((c, i) => ({ bagian: c.bagian, barang: c.barang, supplier: c.supplier, satuan: c.satuan, jumlah: String(c.jumlah || '').trim() }));
+  const sig = JSON.stringify(items);
+  if (OM._sendSig !== sig) { OM._sendId = null; OM._sendSig = sig; }
+  if (!OM._sendId) OM._sendId = 'ord' + Date.now() + Math.random().toString(36).slice(2, 8);
+  items.forEach((it, i) => { it.idempotencyKey = OM._sendId + '-' + i; });
+  OM._busy = true;
+  const btn = $('omKirimBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Mengirim… (bisa beberapa detik)'; }
+  loading(true, 'Mengirim order… jangan tutup halaman');
   try {
     const r = await apiStock('order_add', { items: items, oleh: S.staff.panggilan || S.staff.nama, catatan: OM.cat || '' });
-    loading(false);
+    loading(false); OM._busy = false; OM._sendId = null;
     OM.cart = []; OM.cat = ''; OM.q = '';
     await ask('Order terkirim', `<div class="center big">${(r && r.terkirim) || items.length}</div><div class="muted center">item masuk ke Daftar Belanja & Teks WA.<br>Setelah dibeli, centang "Dibeli" di sheet biar hilang.</div>`);
     renderHome();
-  } catch (e) { loading(false); toast(e.message, 4000); }
+  } catch (e) {
+    loading(false); OM._busy = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Kirim ' + OM.cart.length + ' order ke belanja'; }
+    toast(e.message + ' — kalau perlu tekan lagi, aman tidak akan dobel.', 5000);
+  }
 }
   const MA = { busy: false };
 function maShow() {

@@ -35,22 +35,33 @@ async function renderBeliManual(){
   page('Beli Manual', html);
 }
 
+var BLM_SEND = { key: null, sig: null, busy: false };
 async function blmKirim(){
+  if (BLM_SEND.busy) return;
   var g = function(id){ var el=document.getElementById(id); return el? String(el.value||'').trim() : ''; };
   var nama=g('bmNama'), jml=g('bmJml');
   if(!nama){ alert('Nama barang wajib diisi'); return; }
   if(!jml || isNaN(Number(jml)) || Number(jml)<=0){ alert('Jumlah harus angka lebih dari 0'); return; }
-  var btn=document.getElementById('blmKirim'); if(btn){ btn.disabled=true; btn.textContent='Mengirim…'; }
+  // Kunci dibuat SEKALI per isian ini, dipakai ulang kalau gagal/diulang (klik lagi) —
+  // supaya server bisa tahu ini submit yang SAMA, bukan barang baru (anti-dobel).
+  // Kalau isian berubah (nama/jumlah/dll diedit), kunci direset — dianggap submit baru.
+  var sig = JSON.stringify([nama, g('bmBag'), jml, g('bmSat'), g('bmKat'), g('bmHrg'), g('bmSup'), g('bmCat')]);
+  if (BLM_SEND.sig !== sig) { BLM_SEND.key = null; BLM_SEND.sig = sig; }
+  if (!BLM_SEND.key) BLM_SEND.key = 'bm-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+  BLM_SEND.busy = true;
+  var btn=document.getElementById('blmKirim'); if(btn){ btn.disabled=true; btn.textContent='Mengirim… (bisa beberapa detik)'; }
   try{
     await blmApi('manual_add', {
       barang: nama, bagian: g('bmBag'), jumlah: jml, satuan: g('bmSat'),
       kategori: g('bmKat'), harga: g('bmHrg'), supplier: g('bmSup'), catatan: g('bmCat'),
-      idempotencyKey: 'bm-'+Date.now()+'-'+Math.random().toString(36).slice(2,8)
+      idempotencyKey: BLM_SEND.key
     });
+    BLM_SEND.key = null; BLM_SEND.busy = false;
     alert('Berhasil! "'+nama+'" ditambahkan ke Daftar Belanja.');
     show(renderBelanja);
   }catch(e){
-    alert('Gagal: '+((e&&e.message)||e));
+    BLM_SEND.busy = false;
+    alert('Gagal: '+((e&&e.message)||e)+'\n\nAman untuk tekan "Tambah" lagi — tidak akan dobel.');
     if(btn){ btn.disabled=false; btn.textContent='Tambah ke Daftar Belanja'; }
   }
 }
