@@ -556,7 +556,7 @@ function omSetBagian(b) { OM.bagian = b; drawOrder(); } function drawOrder() {
   else {
     body += OM.cart.map((c, i) => `<div class="rowcard"><div class="rh"><span>${h(c.barang)} <span class="muted">(${c.bagian === 'FOH' ? 'FOH' : 'Kitchen'})</span></span><button class="btn sm ghost" onclick="omDel(${i})">Hapus</button></div>
       <div class="row mt"><input type="text" inputmode="decimal" style="flex:1" value="${h(c.jumlah)}" oninput="OM.cart[${i}].jumlah=this.value" placeholder="Jumlah"><div class="muted" style="min-width:64px;text-align:right">${h(c.satuan || '')}</div></div>
-      <div class="muted" style="font-size:12px;margin-top:5px">Supplier: ${h(c.supplier || '-')}</div></div>`).join('');
+      <div class="row mt" style="font-size:13px"><input type="text" style="flex:1" value="${h(c.supplier || '')}" oninput="OM.cart[${i}].supplier=this.value" placeholder="Supplier (wajib)"></div></div>`).join('');
     body += `<label class="f">Catatan (opsional)</label><input type="text" id="omCat" value="${h(OM.cat || '')}" oninput="OM.cat=this.value" placeholder="mis. untuk stok akhir pekan">`;
     body += `<button class="btn primary mt" id="omKirimBtn" onclick="omKirim()">Kirim ${OM.cart.length} order ke belanja</button>`;
   }
@@ -574,7 +574,9 @@ function omPick(i) {
 function omDel(i) { OM.cart.splice(i, 1); OM._sendId = null; drawOrder(); }
 async function omKirim() {
   if (!OM.cart.length || OM._busy) return;
-  const items = OM.cart.map((c, i) => ({ bagian: c.bagian, barang: c.barang, supplier: c.supplier, satuan: c.satuan, jumlah: String(c.jumlah || '').trim() }));
+  const bad = OM.cart.filter(c => !/\d/.test(String(c.jumlah || '')) || !String(c.supplier || '').trim());
+  if (bad.length) { toast('Lengkapi dulu: ' + bad.map(c => c.barang).join(', ') + ' — jumlah (angka) & supplier wajib diisi.', 5000); return; }
+  const items = OM.cart.map((c, i) => ({ bagian: c.bagian, barang: c.barang, supplier: String(c.supplier || '').trim(), satuan: c.satuan, jumlah: String(c.jumlah || '').trim() }));
   const sig = JSON.stringify(items);
   if (OM._sendSig !== sig) { OM._sendId = null; OM._sendSig = sig; }
   if (!OM._sendId) OM._sendId = 'ord' + Date.now() + Math.random().toString(36).slice(2, 8);
