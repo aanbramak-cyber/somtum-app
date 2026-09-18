@@ -461,34 +461,70 @@ async function belCancel(id) {
   if (!ok) return;
   belAction('belanja_cancel', id);
 }
-function belWaText(items) {
-  const aktif = items.filter(it => it.status !== 'DIBATALKAN' && it.status !== 'SUDAH DIORDER');
-  if (!aktif.length) return '';
-  const grp = {};
-  aktif.forEach(it => { const k = it.bagian === 'FOH' ? 'FOH' : 'Kitchen'; (grp[k] = grp[k] || []).push(it); });
-  let txt = '🛒 *Daftar Belanja Somtum*\n';
-  Object.keys(grp).forEach(k => { txt += `\n*${k}*\n` + grp[k].map(it => `- ${it.barang} ${it.jumlah || ''} ${it.satuan || ''}`.trim()).join('\n') + '\n'; });
-  return txt;
-}
-function belKirimWA() {
-  const items = (BEL.data || []);
-  const txt = belWaText(items);
-  if (!txt) return toast('Tidak ada item aktif untuk dikirim.');
-  window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
-}
-function drawBelanja() {
+function belActiveItems() {
   const all = BEL.data || [];
   const items = BEL.bagian === 'all' ? all : all.filter(it => (it.bagian || '').toUpperCase() === BEL.bagian);
-  const aktif = items.filter(it => it.status !== 'DIBATALKAN');
+  return items.filter(it => it.status !== 'DIBATALKAN' && it.status !== 'SUDAH DIORDER');
+}
+function belSupName(it) { return (it.supplier && String(it.supplier).trim()) ? String(it.supplier).trim() : 'Tanpa supplier'; }
+function belSupItems(i) {
+  const sup = (BEL.groupOrder || [])[i];
+  if (sup == null) return [];
+  return belActiveItems().filter(it => belSupName(it) === sup);
+}
+function belSupText(i) {
+  const sup = (BEL.groupOrder || [])[i];
+  const list = belSupItems(i);
+  if (!list.length) return '';
+  return `🛒 *Belanja Somtum — ${sup}*\n` + list.map(it => `- ${it.barang} ${it.jumlah || ''} ${it.satuan || ''}`.trim()).join('\n') + '\n';
+}
+function belKirimWASup(i) {
+  const txt = belSupText(i);
+  if (!txt) return toast('Tidak ada item aktif untuk supplier ini.');
+  window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+}
+async function belCopySup(i) {
+  const txt = belSupText(i);
+  if (!txt) return toast('Tidak ada item aktif untuk supplier ini.');
+  try { await navigator.clipboard.writeText(txt); toast('Teks belanja disalin.'); }
+  catch (e) { toast('Gagal menyalin, coba Kirim WA.', 3500); }
+}
+async function belSiapOrderSup(i) {
+  const sup = (BEL.groupOrder || [])[i];
+  const list = belSupItems(i);
+  if (!list.length) return;
+  const ok = await ask('Tandai sudah diorder?', `<div class="muted">Semua ${list.length} barang dari ${h(sup)} akan hilang dari daftar (ditandai sudah diorder).</div>`, [{ label: 'Batal', value: false }, { label: 'Ya, sudah', value: true, cls: 'primary' }]);
+  if (!ok) return;
+  BEL.busyId = 'sup:' + i; drawBelanja();
+  try {
+    for (const it of list) {
+      if (it.status === 'BARU') { try { await apiStock('belanja_set_ready', { id: it.id }); } catch (e) {} }
+      await apiStock('belanja_mark_ordered', { id: it.id });
+    }
+    toast('Ditandai sudah diorder.');
+  } catch (e) { toast(e.message, 4000); }
+  BEL.busyId = null;
+  renderDaftarBelanja();
+}
+function drawBelanja() {
+  const aktif = belActiveItems();
+  const grp = {};
+  aktif.forEach(it => { const s = belSupName(it); (grp[s] = grp[s] || []).push(it); });
+  const supNames = Object.keys(grp).sort((a, b) => (a === 'Tanpa supplier' ? 1 : 0) - (b === 'Tanpa supplier' ? 1 : 0) || a.localeCompare(b));
+  BEL.groupOrder = supNames;
   let body = belBagianChips();
-  body += `<div class="row mb"><div class="muted grow">${aktif.length} item aktif${BEL.bagian !== 'all' ? ' · ' + (BEL.bagian === 'FOH' ? 'FOH' : 'Kitchen') : ''}</div><button class="btn sm ok" onclick="belKirimWA()">Kirim WA</button></div>`;
-  if (!items.length) { body += '<div class="card"><div class="muted">Belum ada item di daftar belanja.</div></div>'; }
-  else {
-    const order = { 'BARU': 0, 'SIAP DIORDER': 1, 'SUDAH DIORDER': 2, 'DIBATALKAN': 3 };
-    const sorted = items.slice().sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
-    const belSwatch = { 'BARU': 'var(--warn-l)', 'SIAP DIORDER': '#eef0ff', 'SUDAH DIORDER': 'var(--ok-l)', 'DIBATALKAN': 'var(--bad-l)' };
-    body += sorted.map(it => `<div class="card" style="padding:11px 12px;margin-bottom:8px"><div class="row"><div class="iswatch" style="background:${belSwatch[it.status] || '#eee'};width:30px;height:30px;margin-right:2px"></div><div class="grow"><b>${h(it.barang)}</b> <span class="muted" style="font-size:12px">${it.bagian === 'FOH' ? 'FOH' : 'Kitchen'}</span></div>${belStatusBadge(it.status)}</div><div class="muted" style="font-size:13px;margin-top:4px">${h(it.jumlah)} ${h(it.satuan)}${it.supplier ? ' · ' + h(it.supplier) : ''}</div>${it.catatan ? `<div class="muted" style="font-size:12px">${h(it.catatan)}</div>` : ''}<div class="row mt" style="justify-content:flex-end;gap:6px">${belItemActions(it)}</div></div>`).join('');
-  }
+  body += `<div class="row mb"><div class="muted grow">${aktif.length} barang · ${supNames.length} supplier${BEL.bagian !== 'all' ? ' · ' + (BEL.bagian === 'FOH' ? 'FOH' : 'Kitchen') : ''}</div></div>`;
+  if (!aktif.length) { body += '<div class="card"><div class="muted">Belum ada item di daftar belanja. Tambahkan lewat menu Order bahan / barang.</div></div>'; page('Daftar Belanja', body); return; }
+  const busy = String(BEL.busyId || '');
+  body += supNames.map((sup, i) => {
+    const list = grp[sup];
+    const rows = list.map(it => `<div class="row" style="border-top:1px solid rgba(0,0,0,.07);padding:7px 0;align-items:flex-start"><div class="grow"><div><b>${h(it.barang)}</b> <span class="muted" style="font-size:11px">${it.bagian === 'FOH' ? 'FOH' : 'Kitchen'}</span></div><div class="muted" style="font-size:12.5px">${h(it.jumlah)} ${h(it.satuan)}</div>${it.catatan ? `<div class="muted" style="font-size:11.5px">${h(it.catatan)}</div>` : ''}</div>${roleAtLeast('owner') ? `<button class="btn sm ghost" style="padding:2px 9px" onclick="belCancel('${h(it.id)}')">&times;</button>` : ''}</div>`).join('');
+    const busyThis = busy === 'sup:' + i;
+    const foot = busyThis
+      ? '<div class="muted mt" style="font-size:12px">Menyimpan…</div>'
+      : `<div class="row mt" style="gap:8px"><button class="btn sm" style="flex:1" onclick="belCopySup(${i})">Copy teks</button><button class="btn sm ok" style="flex:1" onclick="belKirimWASup(${i})">Kirim WA</button></div><button class="btn sm mt" style="width:100%" onclick="belSiapOrderSup(${i})">&#10003; Tandai sudah diorder</button>`;
+    return `<div class="card" style="padding:12px 13px;margin-bottom:10px"><div class="row"><b class="grow">${h(sup)}</b><span class="muted" style="font-size:12px">${list.length} barang</span></div>${rows}${foot}</div>`;
+  }).join('');
   page('Daftar Belanja', body);
 }
 
