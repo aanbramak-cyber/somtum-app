@@ -434,7 +434,7 @@ function belBagianChips() {
 function belSetBagian(b) { BEL.bagian = b; drawBelanja(); }
 async function renderDaftarBelanja() {
   page('Daftar Belanja', belBagianChips() + '<div class="muted center mt">Memuat…</div>');
-  try { BEL.data = await apiStock('manual_list', {}); drawBelanja(); }
+  try { var _br = await apiStock('belanja_rows', {}); BEL.data = (_br && _br.rows) || (Array.isArray(_br) ? _br : []); drawBelanja(); }
   catch (e) { page('Daftar Belanja', belBagianChips() + `<div class="card"><div class="muted">${h(e.message)}</div><button class="btn mt" onclick="renderDaftarBelanja()">Coba lagi</button></div>`); }
 }
 function belStatusBadge(status) {
@@ -464,7 +464,9 @@ async function belCancel(id) {
 function belActiveItems() {
   const all = BEL.data || [];
   const items = BEL.bagian === 'all' ? all : all.filter(it => (it.bagian || '').toUpperCase() === BEL.bagian);
-  return items.filter(it => it.status !== 'DIBATALKAN' && it.status !== 'SUDAH DIORDER');
+  const seen = {}, out = [];
+  items.forEach(it => { const k = (it.bagian || '') + '|' + belSupName(it) + '|' + String(it.barang || '').trim().toLowerCase(); if (seen[k]) return; seen[k] = 1; out.push(it); });
+  return out;
 }
 function belSupName(it) { return (it.supplier && String(it.supplier).trim()) ? String(it.supplier).trim() : 'Tanpa supplier'; }
 function belSupItems(i) {
@@ -476,7 +478,7 @@ function belSupText(i) {
   const sup = (BEL.groupOrder || [])[i];
   const list = belSupItems(i);
   if (!list.length) return '';
-  return `🛒 *Belanja Somtum — ${sup}*\n` + list.map(it => `- ${it.barang} ${it.jumlah || ''} ${it.satuan || ''}`.trim()).join('\n') + '\n';
+  return `🛒 *Belanja Somtum — ${sup}*\n` + list.map(it => `- ${it.barang} ${it.order || ''} ${it.satuan || ''}`.trim()).join('\n') + '\n';
 }
 function belKirimWASup(i) {
   const txt = belSupText(i);
@@ -496,13 +498,8 @@ async function belSiapOrderSup(i) {
   const ok = await ask('Tandai sudah diorder?', `<div class="muted">Semua ${list.length} barang dari ${h(sup)} akan hilang dari daftar (ditandai sudah diorder).</div>`, [{ label: 'Batal', value: false }, { label: 'Ya, sudah', value: true, cls: 'primary' }]);
   if (!ok) return;
   BEL.busyId = 'sup:' + i; drawBelanja();
-  try {
-    for (const it of list) {
-      if (it.status === 'BARU') { try { await apiStock('belanja_set_ready', { id: it.id }); } catch (e) {} }
-      await apiStock('belanja_mark_ordered', { id: it.id });
-    }
-    toast('Ditandai sudah diorder.');
-  } catch (e) { toast(e.message, 4000); }
+  try { await apiStock('belanja_supplier_done', { supplier: sup }); toast('Ditandai sudah diorder.'); }
+  catch (e) { toast(e.message, 4000); }
   BEL.busyId = null;
   renderDaftarBelanja();
 }
@@ -518,7 +515,7 @@ function drawBelanja() {
   const busy = String(BEL.busyId || '');
   body += supNames.map((sup, i) => {
     const list = grp[sup];
-    const rows = list.map(it => `<div class="row" style="border-top:1px solid rgba(0,0,0,.07);padding:7px 0;align-items:flex-start"><div class="grow"><div><b>${h(it.barang)}</b> <span class="muted" style="font-size:11px">${it.bagian === 'FOH' ? 'FOH' : 'Kitchen'}</span></div><div class="muted" style="font-size:12.5px">${h(it.jumlah)} ${h(it.satuan)}</div>${it.catatan ? `<div class="muted" style="font-size:11.5px">${h(it.catatan)}</div>` : ''}</div>${roleAtLeast('owner') ? `<button class="btn sm ghost" style="padding:2px 9px" onclick="belCancel('${h(it.id)}')">&times;</button>` : ''}</div>`).join('');
+    const rows = list.map(it => `<div class="row" style="border-top:1px solid rgba(0,0,0,.07);padding:7px 0;align-items:flex-start"><div class="grow"><div><b>${h(it.barang)}</b> <span class="muted" style="font-size:11px">${it.bagian === 'FOH' ? 'FOH' : 'Kitchen'}</span></div><div class="muted" style="font-size:12.5px">${h(it.order)} ${h(it.satuan)}</div>${it.catatan ? `<div class="muted" style="font-size:11.5px">${h(it.catatan)}</div>` : ''}</div></div>`).join('');
     const busyThis = busy === 'sup:' + i;
     const foot = busyThis
       ? '<div class="muted mt" style="font-size:12px">Menyimpan…</div>'
