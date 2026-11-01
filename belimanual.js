@@ -295,3 +295,250 @@ function drawLaporanStokBody(){
   else window.addEventListener('load', patch);
   setTimeout(patch, 800); setTimeout(patch, 2000); setTimeout(patch, 4000);
 })();
+
+/* ===== LAPORAN & MASUKAN: kritik/saran customer, komplain, masalah operasional, masalah app =====
+   Backend Somtum App: masukan_add (semua staf), masukan_list (staf: miliknya; kepala+: semua),
+   masukan_set (kepala+; hapus = owner). Data di tab "Laporan & Masukan". */
+(function(){
+  if (window.__mskLoaded) return;
+  window.__mskLoaded = true;
+
+  var JENIS = [
+    { v: 'Kritik & saran customer', s: 'Kritik & saran', cust: true,
+      info: 'Masukan dari customer: rasa, porsi, harga, pelayanan, ide menu.',
+      ph: 'Contoh: customer bilang somtum kurang asam, minta ada pilihan level pedas' },
+    { v: 'Komplain customer', s: 'Komplain', cust: true,
+      info: 'Customer tidak puas, minta ganti atau refund.',
+      ph: 'Contoh: pesanan GoFood telat 40 menit, ayam kurang matang' },
+    { v: 'Masalah operasional', s: 'Masalah operasional', cust: false,
+      info: 'Alat rusak, bahan habis, listrik / air / gas, kebersihan, kendala kerja.',
+      ph: 'Contoh: kompor 2 apinya kecil, freezer bunyi, gas tinggal sedikit' },
+    { v: 'Masalah app', s: 'Masalah app', cust: false,
+      info: 'Error atau tidak bisa dipakai di app Somtum: absen, nota, stok, jadwal, dll.',
+      ph: 'Contoh: foto nota gagal upload, tombol absen tidak muncul' }
+  ];
+  var OUTLETS = ['Somtum Bali', 'Little Pratunam'];
+  var FILTERS = [['aktif', 'Belum selesai'], ['Baru', 'Baru'], ['Diproses', 'Diproses'], ['Selesai', 'Selesai'], ['semua', 'Semua']];
+  var TILE_SB = 'Kritik customer · komplain · masalah';
+  var ICON = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 8h8M8 12h5"/></svg>';
+  var M = window.MSK = { jenis: '', outlet: '', tanggal: '', detail: '', customer: '', tindakan: '',
+                         filter: 'aktif', list: null, nonce: String(Date.now()), busy: false };
+  var CNT = { t: 0, n: null };
+
+  function jenisOf(v){ for (var i = 0; i < JENIS.length; i++) if (JENIS[i].v === v) return JENIS[i]; return null; }
+  function defOutlet(){ var o = S.staff && S.staff.outlet; return OUTLETS.indexOf(o) >= 0 ? o : OUTLETS[0]; }
+  function safeId(id){ return String(id == null ? '' : id).replace(/[^A-Za-z0-9_-]/g, ''); }
+  function hash(s){ var x = 5381; for (var i = 0; i < s.length; i++) x = ((x << 5) + x + s.charCodeAt(i)) | 0; return (x >>> 0).toString(36); }
+  function findRow(id){ var L = M.list || []; for (var i = 0; i < L.length; i++) if (safeId(L[i].id) === id) return L[i]; return null; }
+  function badgeCls(s){ return s === 'Selesai' ? 'b-ok' : s === 'Diproses' ? 'b-warn' : 'b-bad'; }
+  function countBaru(){ return (M.list || []).filter(function(r){ return r.status === 'Baru'; }).length; }
+  function saveFields(){
+    var a = $('mskTgl'), b = $('mskDetail'), c = $('mskCust'), d = $('mskTindak');
+    if (a) M.tanggal = a.value;
+    if (b) M.detail = b.value;
+    if (c) M.customer = c.value;
+    if (d) M.tindakan = d.value;
+  }
+
+  /* ---------- halaman ---------- */
+  window.renderMasukan = function(){
+    if (!M.outlet) M.outlet = defOutlet();
+    if (!M.tanggal) M.tanggal = todayStr();
+    page('Laporan & Masukan', '<div class="card" id="mskForm"></div><div id="mskList"><div class="muted center">Memuat…</div></div>');
+    drawForm();
+    if (M.list) drawList();
+    loadList();
+  };
+
+  function drawForm(){
+    var el = $('mskForm'); if (!el) return;
+    var j = jenisOf(M.jenis);
+    el.innerHTML = '<h3>Buat laporan</h3>'
+      + '<div class="muted">Catat kritik / saran dan komplain customer, atau masalah di outlet dan app. Kepala dan owner yang menindaklanjuti.</div>'
+      + '<label class="f">Jenis <span class="req">*</span></label><div class="chips">'
+      + JENIS.map(function(x, i){ return '<button class="chipb' + (M.jenis === x.v ? ' on' : '') + '" onclick="mskJenis(' + i + ')">' + h(x.s) + '</button>'; }).join('')
+      + '</div>'
+      + (j ? '<div class="help" style="margin:8px 0 0">' + h(j.info) + '</div>' : '')
+      + '<label class="f">Outlet</label><div class="chips">'
+      + OUTLETS.map(function(o, i){ return '<button class="chipb' + (M.outlet === o ? ' on' : '') + '" onclick="mskOutlet(' + i + ')">' + h(o) + '</button>'; }).join('')
+      + '</div>'
+      + '<label class="f">Tanggal kejadian</label><input type="date" id="mskTgl" max="' + todayStr() + '" value="' + h(M.tanggal) + '">'
+      + '<label class="f">Detail <span class="req">*</span></label><textarea id="mskDetail" placeholder="' + h(j ? j.ph : 'Pilih jenis dulu, lalu ceritakan apa yang terjadi') + '">' + h(M.detail) + '</textarea>'
+      + (j && j.cust ? '<label class="f">Customer / meja / no. order</label><input type="text" id="mskCust" autocomplete="off" placeholder="Contoh: meja 4 / GoFood F-123 / Bu Rina" value="' + h(M.customer) + '">' : '')
+      + '<label class="f">Tindakan yang sudah dilakukan</label><textarea id="mskTindak" style="min-height:60px" placeholder="Contoh: sudah minta maaf dan ganti menu baru">' + h(M.tindakan) + '</textarea>'
+      + '<button class="btn primary mt" onclick="mskKirim()">Kirim laporan</button>';
+    ['mskTgl', 'mskDetail', 'mskCust', 'mskTindak'].forEach(function(id){ var x = $(id); if (x) x.addEventListener('input', saveFields); });
+  }
+
+  async function loadList(){
+    try {
+      var list = await api('masukan_list');
+      M.list = Array.isArray(list) ? list : [];
+      CNT.n = countBaru(); CNT.t = Date.now();
+      drawList();
+    } catch (e) {
+      var el = $('mskList'); if (!el) return;
+      el.innerHTML = '<div class="card"><div class="muted">' + h(e.message) + '</div><button class="btn sm mt" onclick="mskReload()">Coba lagi</button></div>';
+    }
+  }
+
+  function drawList(){
+    var el = $('mskList'); if (!el || !M.list) return;
+    var L = M.list;
+    var n = { aktif: 0, Baru: 0, Diproses: 0, Selesai: 0, semua: L.length };
+    L.forEach(function(r){ n[r.status] = (n[r.status] || 0) + 1; if (r.status !== 'Selesai') n.aktif++; });
+    var arr = L.filter(function(r){ return M.filter === 'semua' ? true : M.filter === 'aktif' ? r.status !== 'Selesai' : r.status === M.filter; });
+    el.innerHTML = '<h3 style="font-size:14px;color:var(--mut);margin:14px 0 8px">' + (roleAtLeast('kepala') ? 'Semua laporan' : 'Laporan saya') + '</h3>'
+      + '<div class="chips mb">' + FILTERS.map(function(f){
+          return '<button class="chipb' + (M.filter === f[0] ? ' on' : '') + '" style="padding:7px 12px;font-size:13px" onclick="mskFilter(\'' + f[0] + '\')">' + f[1] + ' (' + (n[f[0]] || 0) + ')</button>';
+        }).join('') + '</div>'
+      + (arr.length ? arr.map(cardHtml).join('')
+                    : '<div class="muted center mt">' + (L.length ? 'Tidak ada laporan di filter ini.' : 'Belum ada laporan.') + '</div>');
+  }
+
+  function cardHtml(r){
+    var id = safeId(r.id), st = r.status || 'Baru';
+    var acts = '';
+    if (roleAtLeast('kepala')) {
+      var b = [];
+      if (st === 'Baru') b.push('<button class="btn sm grow" style="margin-top:0" onclick="mskSet(\'' + id + '\',\'Diproses\')">Proses</button>');
+      if (st !== 'Selesai') b.push('<button class="btn sm ok grow" style="margin-top:0" onclick="mskSelesai(\'' + id + '\')">Selesai</button>');
+      else b.push('<button class="btn sm grow" style="margin-top:0" onclick="mskSet(\'' + id + '\',\'Diproses\')">Buka lagi</button>');
+      if (roleAtLeast('owner')) b.push('<button class="btn sm ghost" style="margin-top:0" onclick="mskHapus(\'' + id + '\')">Hapus</button>');
+      acts = '<div class="row mt">' + b.join('') + '</div>';
+    }
+    var meta = [r.outlet ? h(r.outlet) : '', r.tanggal ? h(tglCantik(r.tanggal)) : ''].filter(Boolean).join(' · ');
+    return '<div class="card">'
+      + '<div class="row" style="align-items:flex-start"><div class="grow"><b>' + h(r.jenis) + '</b><div class="muted">' + meta + '</div></div>'
+      + '<span class="badge ' + badgeCls(st) + '">' + h(st) + '</span></div>'
+      + '<div style="margin-top:8px;font-size:14.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word">' + h(r.detail) + '</div>'
+      + (r.customer ? '<div class="muted" style="margin-top:6px">Customer: ' + h(r.customer) + '</div>' : '')
+      + (r.tindakan ? '<div class="muted" style="margin-top:4px">Tindakan awal: ' + h(r.tindakan) + '</div>' : '')
+      + (r.catatan
+          ? '<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--bg);font-size:13px;white-space:pre-wrap;word-break:break-word"><b>Tindak lanjut' + (r.oleh ? ' · ' + h(r.oleh) : '') + ':</b> ' + h(r.catatan) + '</div>'
+          : (r.oleh && st !== 'Baru' ? '<div class="muted" style="margin-top:4px">Ditangani: ' + h(r.oleh) + '</div>' : ''))
+      + '<div class="muted" style="font-size:12px;margin-top:8px">Dilaporkan ' + h(r.pelapor || '') + (r.waktu ? ' · ' + h(r.waktu) : '') + '</div>'
+      + acts + '</div>';
+  }
+
+  /* ---------- aksi ---------- */
+  window.mskJenis = function(i){ saveFields(); if (JENIS[i]) M.jenis = JENIS[i].v; drawForm(); };
+  window.mskOutlet = function(i){ saveFields(); if (OUTLETS[i]) M.outlet = OUTLETS[i]; drawForm(); };
+  window.mskFilter = function(f){ M.filter = f; drawList(); };
+  window.mskReload = function(){ var el = $('mskList'); if (el) el.innerHTML = '<div class="muted center">Memuat…</div>'; loadList(); };
+
+  window.mskKirim = async function(){
+    if (M.busy) return;
+    saveFields();
+    var j = jenisOf(M.jenis);
+    if (!j) return toast('Pilih jenis laporan dulu.');
+    var detail = String(M.detail || '').trim();
+    if (detail.length < 5) return toast('Isi detail laporannya (minimal 5 huruf).');
+    var tgl = M.tanggal || todayStr();
+    if (tgl > todayStr()) return toast('Tanggal kejadian tidak boleh melewati hari ini.');
+    var p = { jenis: j.v, outlet: M.outlet || defOutlet(), tanggal: tgl, detail: detail,
+              customer: j.cust ? String(M.customer || '').trim() : '', tindakan: String(M.tindakan || '').trim() };
+    // kunci sama untuk isi yang sama → kirim ulang (sinyal putus) tidak bikin data dobel
+    p.idempotencyKey = 'msk-' + safeId(S.staff && S.staff.id) + '-' + M.nonce + '-' + hash(JSON.stringify(p));
+    M.busy = true;
+    loading(true, 'Mengirim laporan…');
+    try {
+      await api('masukan_add', p);
+      loading(false);
+      M.jenis = ''; M.detail = ''; M.customer = ''; M.tindakan = ''; M.tanggal = todayStr(); M.nonce = String(Date.now());
+      M.filter = 'aktif';
+      toast('Laporan terkirim. Terima kasih 🙏');
+      drawForm();
+      loadList();
+    } catch (e) { loading(false); toast(e.message, 4000); }
+    finally { M.busy = false; }
+  };
+
+  async function setStatus(id, status, catatan){
+    loading(true, 'Menyimpan…');
+    try {
+      await api('masukan_set', { id: id, status: status, catatan: catatan == null ? null : catatan });
+      loading(false);
+      if (status === 'Dihapus') M.list = (M.list || []).filter(function(r){ return safeId(r.id) !== id; });
+      else { var r = findRow(id); if (r) { r.status = status; r.oleh = (S.staff && S.staff.panggilan) || r.oleh; if (catatan != null) r.catatan = catatan; } }
+      CNT.n = countBaru();
+      drawList();
+      toast(status === 'Dihapus' ? 'Laporan dihapus.' : 'Status: ' + status);
+      loadList();
+    } catch (e) { loading(false); toast(e.message, 4000); }
+  }
+
+  window.mskSet = function(id, status){ setStatus(safeId(id), status, null); };
+
+  window.mskSelesai = async function(id, draft){
+    id = safeId(id);
+    var r = findRow(id);
+    var val = draft != null ? draft : ((r && r.catatan) || '');
+    var det = r ? String(r.detail || '') : '';
+    var p = ask('Tandai selesai',
+      (r ? '<div class="muted">' + h(r.jenis) + ' · ' + h(r.outlet || '') + '</div><div style="margin:6px 0 2px;font-size:14px;white-space:pre-wrap;word-break:break-word">' + h(det.slice(0, 160)) + (det.length > 160 ? '…' : '') + '</div>' : '')
+      + '<label class="f">Tindak lanjut / solusinya <span class="req">*</span></label><textarea id="mskCat" placeholder="Contoh: kompor sudah diservis / customer sudah dihubungi dan diberi voucher">' + h(val) + '</textarea>',
+      [{ label: 'Batal', value: false }, { label: 'Tandai selesai', value: true, cls: 'primary' }]);
+    var ta = $('mskCat');
+    if (ta) ta.addEventListener('input', function(){ val = ta.value; });
+    var ok = await p;
+    if (!ok) return;
+    val = String(val || '').trim();
+    if (val.length < 3) { toast('Tulis dulu tindak lanjutnya.'); return window.mskSelesai(id, val); }
+    setStatus(id, 'Selesai', val);
+  };
+
+  window.mskHapus = async function(id){
+    var ok = await ask('Hapus laporan ini?', '<div class="muted">Laporan disembunyikan dari daftar, tapi tetap tersimpan di sheet.</div>',
+      [{ label: 'Batal', value: false }, { label: 'Hapus', value: true, cls: 'primary' }]);
+    if (ok) setStatus(safeId(id), 'Dihapus', null);
+  };
+
+  /* ---------- tile di beranda (+ jumlah laporan baru untuk kepala ke atas) ---------- */
+  function setTileSb(){
+    var sb = document.getElementById('mskTileSb'); if (!sb) return;
+    sb.innerHTML = (roleAtLeast('kepala') && CNT.n)
+      ? '<span class="badge b-bad" style="font-size:11px;padding:2px 8px">' + CNT.n + ' baru</span> perlu dicek'
+      : TILE_SB;
+  }
+  function refreshCount(){
+    if (!roleAtLeast('kepala') || Date.now() - CNT.t < 120000) return;
+    CNT.t = Date.now();
+    api('masukan_list').then(function(list){
+      M.list = Array.isArray(list) ? list : [];
+      CNT.n = countBaru();
+      setTileSb();
+    }).catch(function(){ CNT.t = 0; });
+  }
+  function inject(){
+    try {
+      if (!S || !S.staff) return;
+      var main = document.querySelector('#app main.homemain');
+      var grid = main && main.querySelector('.grid');
+      if (!grid) return;
+      if (!document.getElementById('mskTile')) {
+        var w = document.createElement('div');
+        w.innerHTML = '<div class="tile" id="mskTile" onclick="show(renderMasukan)"><div class="ic">' + ICON + '</div><div class="lb">Laporan &amp; masukan</div><div class="sb" id="mskTileSb">' + TILE_SB + '</div></div>';
+        var tile = w.firstChild;
+        var tiles = grid.querySelectorAll('.tile'), after = null;
+        for (var i = 0; i < tiles.length; i++) if (/renderJadwal/.test(tiles[i].getAttribute('onclick') || '')) after = tiles[i];
+        if (after && after.nextSibling) grid.insertBefore(tile, after.nextSibling); else grid.appendChild(tile);
+      }
+      setTileSb();
+      refreshCount();
+    } catch (e) {}
+  }
+  function watch(){
+    try {
+      var app = document.getElementById('app');
+      if (app && !app.__mskObs) {
+        app.__mskObs = true;
+        new MutationObserver(function(){ inject(); }).observe(app, { childList: true });
+      }
+    } catch (e) {}
+    inject();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+  window.addEventListener('load', watch);
+  setTimeout(watch, 1500);
+})();
