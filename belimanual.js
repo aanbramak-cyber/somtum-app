@@ -542,3 +542,126 @@ function drawLaporanStokBody(){
   window.addEventListener('load', watch);
   setTimeout(watch, 1500);
 })();
+
+/* ===== WAJIB LAPORAN & MASUKAN SEBELUM CLOSING (bahan evaluasi bulanan) =====
+   Buka form Closing → cek laporan hari ini untuk outlet itu (semua staf).
+   Belum ada → isi dulu di menu Laporan & masukan, atau nyatakan "tidak ada" (tercatat atas nama pengisi). */
+(function(){
+  if (window.__mskGateLoaded) return;
+  window.__mskGateLoaded = true;
+  var NIHIL = 'Tidak ada laporan';
+  var LOLOS = {};   // "key|tanggal" yang sudah lolos cek
+  var G = null;     // closing yang sedang ditahan
+
+  function tglBisnis(){  // lewat tengah malam (sebelum jam 5 pagi) masih dihitung hari kemarin
+    var d = new Date();
+    if (d.getHours() < 5) d.setDate(d.getDate() - 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function outletForm(key){
+    try {
+      var f = (S.cfg.forms || []).filter(function(x){ return x.key === key; })[0];
+      if (f && f.sumber) return f.sumber === 'Cashflow LP' ? 'Little Pratunam' : 'Somtum Bali';
+    } catch (e) {}
+    return /LP$/i.test(String(key)) ? 'Little Pratunam' : 'Somtum Bali';
+  }
+  function navTop(){ try { return nav[nav.length - 1]; } catch (e) { return null; } }
+
+  function bungkus(orig){
+    var g = function(key, title){
+      var self = this, args = arguments;
+      if (!/^closing/i.test(String(key))) return orig.apply(self, args);
+      var tgl = tglBisnis(), outlet = outletForm(key), k = key + '|' + tgl;
+      if (LOLOS[k]) return orig.apply(self, args);
+      var top = navTop();
+      page(title, '<div class="muted center mt">Cek laporan &amp; masukan hari ini…</div>');
+      return api('masukan_list', { cek: 1, outlet: outlet, tanggal: tgl }).then(function(r){
+        if (navTop() !== top) return;
+        var valid = r && typeof r.laporan === 'number';
+        if (!valid || r.laporan > 0 || r.nihil) {   // backend lama / sudah ada laporan → lanjut closing
+          if (valid) { LOLOS[k] = true; G = null; if (window.MSK) window.MSK.balikKe = null; }
+          return orig.apply(self, args);
+        }
+        G = { key: key, title: title, outlet: outlet, tgl: tgl };
+        tampilGate();
+      }, function(){ if (navTop() === top) return orig.apply(self, args); });   // gagal cek (sinyal) → closing tetap bisa
+    };
+    g.__mskGate = true;
+    return g;
+  }
+
+  function tampilGate(){
+    if (!G) return;
+    page(G.title, '<div class="card">'
+      + '<h3>Sebelum closing</h3>'
+      + '<div class="muted">Isi dulu <b>laporan hari ini</b> untuk ' + h(G.outlet) + ': kritik / saran customer, komplain, atau masalah. Wajib setiap hari, untuk evaluasi bulanan.</div>'
+      + '<button class="btn primary mt" onclick="mskGateIsi()">Isi laporan &amp; masukan</button>'
+      + '<button class="btn" onclick="mskGateNihil()">Tidak ada kritik / komplain / masalah hari ini</button>'
+      + '</div>');
+  }
+
+  window.mskGateIsi = function(){
+    if (!G) return;
+    var M = window.MSK;
+    if (M) { M.outlet = G.outlet; M.tanggal = G.tgl; M.balikKe = G; }
+    show(window.renderMasukan);
+  };
+
+  window.mskGateNihil = async function(){
+    if (!G) return;
+    var g = G;
+    var ok = await ask('Tidak ada laporan hari ini?',
+      '<div class="muted">Kamu menyatakan hari ini di <b>' + h(g.outlet) + '</b> tidak ada kritik, saran, komplain, atau masalah. Tercatat atas namamu.</div>',
+      [{ label: 'Batal', value: false }, { label: 'Ya, tidak ada', value: true, cls: 'primary' }]);
+    if (!ok) return;
+    loading(true, 'Mencatat…');
+    try {
+      await api('masukan_add', { jenis: NIHIL, outlet: g.outlet, tanggal: g.tgl, detail: '-', idempotencyKey: 'nihil-' + g.outlet + '-' + g.tgl });
+      loading(false);
+      LOLOS[g.key + '|' + g.tgl] = true;
+      G = null;
+      if (window.MSK) window.MSK.balikKe = null;
+      window.renderForm(g.key, g.title);
+    } catch (e) { loading(false); toast(e.message, 4000); }
+  };
+
+  window.mskLanjutClosing = function(){ back(); };
+
+  function bannerBalik(){
+    try {
+      var M = window.MSK;
+      if (!M || !M.balikKe || document.getElementById('mskBalik')) return;
+      var main = document.querySelector('#app main');
+      if (!main) return;
+      var d = document.createElement('div');
+      d.id = 'mskBalik'; d.className = 'banner';
+      d.innerHTML = 'Untuk closing ' + h(M.balikKe.outlet) + '. Kalau laporan hari ini sudah terkirim, tekan:'
+        + '<button class="btn primary" style="margin-top:8px" onclick="mskLanjutClosing()">Lanjut ke Closing ›</button>';
+      main.insertBefore(d, main.firstChild);
+    } catch (e) {}
+  }
+
+  function patch(){
+    try { if (typeof window.renderForm === 'function' && !window.renderForm.__mskGate) window.renderForm = bungkus(window.renderForm); } catch (e) {}
+    try {
+      if (typeof window.renderMasukan === 'function' && !window.renderMasukan.__mskGate) {
+        var _rm = window.renderMasukan;
+        var rm = function(){ var r = _rm.apply(this, arguments); bannerBalik(); return r; };
+        rm.__mskGate = true;
+        window.renderMasukan = rm;
+      }
+    } catch (e) {}
+    try {
+      var app = document.getElementById('app');
+      if (app && !app.__mskGateObs) {
+        app.__mskGateObs = true;
+        new MutationObserver(function(){
+          if (document.querySelector('#app main.homemain')) { G = null; if (window.MSK) window.MSK.balikKe = null; }
+        }).observe(app, { childList: true });
+      }
+    } catch (e) {}
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', patch); else patch();
+  window.addEventListener('load', patch);
+  setTimeout(patch, 800); setTimeout(patch, 2000); setTimeout(patch, 4000);
+})();
